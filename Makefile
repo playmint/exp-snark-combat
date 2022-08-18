@@ -7,7 +7,7 @@ verifier.sol: combat_0001.zkey
 	snarkjs zkey export solidityverifier combat_0001.zkey verifier.sol
 
 combat.wasm: combat.circom
-	circom combat.circom --wasm
+	circom combat.circom --wasm --sym
 
 combat.r1cs: combat.circom
 	circom combat.circom --r1cs
@@ -41,7 +41,7 @@ clean:
 	rm -f public.json
 	rm -f input.json
 	rm -rf combat_js
-	rm -f combat.r1cs combat.wasm
+	rm -f combat.r1cs combat.wasm combat.sym
 	rm -f pot_0000.ptau pot_0001.ptau
 	rm -f combat_0000.zkey combat_0001.zkey
 	rm -f verification_key.json

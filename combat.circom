@@ -206,8 +206,6 @@ template Combat(numSeekers, numTicks) {
 		seekerHealthOut[i] <== selectedSeekerHealth.out[i];
 	}
 
-	// TODO: can we set the outputs to a specific "tick" ie "dungeon health at the fifth tick"?
-	// this would allow us to have a big tick-cap, but verify from a subset of it
  }
 
  component main {
