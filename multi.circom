@@ -16,6 +16,50 @@ template Sum(n) {
     out <== sums[n-1];
 }
 
+// Given a list of N input signals and an index signal i, return the value of signal at inputs[i] as output
+template Select(n) {
+	signal input in[n];
+	signal input idx;
+	signal output out;
+	component iseq[n];
+	component sm = Sum(n);
+
+	for (var i=0; i<n; i++) {
+		iseq[i] = IsEqual();
+		iseq[i].in[0] <== i;
+		iseq[i].in[1] <== idx;
+		sm.in[i] <== (iseq[i].out * in[i]);
+	}
+
+	out <== sm.out;
+}
+
+// same as Select, but each input is an array of X signals
+template SelectArray(n, x) {
+	signal input in[n][x];
+	signal input idx;
+	signal output out[x];
+	component iseq[n];
+	component sm[x];
+
+	for (var j=0; j<x; j++) {
+		sm[j] = Sum(n);
+	}
+
+	for (var i=0; i<n; i++) {
+		iseq[i] = IsEqual();
+		iseq[i].in[0] <== i;
+		iseq[i].in[1] <== idx;
+		for (var j=0; j<x; j++) {
+			sm[j].in[i] <== (iseq[i].out * in[i][j]);
+		}
+	}
+
+	for (var j=0; j<x; j++) {
+		out[j] <== sm[j].out;
+	}
+}
+
 template Tick(numSeekers) {
     signal input seekerAttackArmour[numSeekers];
     signal input seekerAttackHealth[numSeekers];
@@ -84,6 +128,8 @@ template Tick(numSeekers) {
 
 template Combat(numSeekers, numTicks) {
 
+	signal input selectedTick;
+
 	// public starting health values
 	signal input dungeonArmourIn;
 	signal input dungeonHealthIn;
@@ -103,6 +149,16 @@ template Combat(numSeekers, numTicks) {
 	signal output seekerArmourOut[numSeekers];
 
 	component tick[numTicks];
+
+	component selectedDungeonArmour = Select(numTicks);
+	component selectedDungeonHealth = Select(numTicks);
+	component selectedSeekerArmour = SelectArray(numTicks, numSeekers);
+	component selectedSeekerHealth = SelectArray(numTicks, numSeekers);
+
+	selectedDungeonArmour.idx <== selectedTick;
+	selectedDungeonHealth.idx <== selectedTick;
+	selectedSeekerArmour.idx <== selectedTick;
+	selectedSeekerHealth.idx <== selectedTick;
 
 	// wireup t=0 (transition between current healths -> first tick)
 	tick[0] = Tick(numSeekers);
@@ -132,12 +188,22 @@ template Combat(numSeekers, numTicks) {
 		}
 	}
 
-	// expose the last tick's values as public output signals
-	dungeonArmourOut <== tick[numTicks-1].nextDungeonArmour;
-	dungeonHealthOut <== tick[numTicks-1].nextDungeonHealth;
+	// expose the selected tick's health values as public output signals
+	for(var t=0; t<numTicks; t++){
+		selectedDungeonArmour.in[t] <== tick[t].nextDungeonArmour;
+		selectedDungeonHealth.in[t] <== tick[t].nextDungeonHealth;
+		for(var i=0; i<numSeekers; i++){
+			selectedSeekerArmour.in[t][i] <== tick[t].nextSeekerArmour[i];
+			selectedSeekerHealth.in[t][i] <== tick[t].nextSeekerHealth[i];
+		}
+	}
+	dungeonArmourOut <== selectedDungeonArmour.out;
+	dungeonHealthOut <== selectedDungeonHealth.out;
+	component iseq[numSeekers];
+	component sm = Sum(numSeekers);
 	for(var i=0; i<numSeekers; i++){
-		seekerHealthOut[i] <== tick[numTicks-1].nextSeekerHealth[i];
-		seekerArmourOut[i] <== tick[numTicks-1].nextSeekerArmour[i];
+		seekerArmourOut[i] <== selectedSeekerArmour.out[i];
+		seekerHealthOut[i] <== selectedSeekerHealth.out[i];
 	}
 
 	// TODO: can we set the outputs to a specific "tick" ie "dungeon health at the fifth tick"?
