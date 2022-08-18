@@ -221,4 +221,4 @@ template Combat(numSeekers, numTicks) {
 		dungeonAttackArmour,
 		dungeonAttackHealth
 	]
-} = Combat(5, 3);
+} = Combat(5, 10000);
