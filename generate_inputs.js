@@ -26,6 +26,10 @@ async function main() {
     for (let i=0; i<numSeekers; i++) {
         inputValues.push(inputs.seekerArmourIn[i]);
         inputValues.push(inputs.seekerHealthIn[i]);
+        inputValues.push(inputs.seekerAttackArmour[i]);
+        inputValues.push(inputs.seekerAttackHealth[i]);
+        inputValues.push(inputs.dungeonAttackArmour[i]);
+        inputValues.push(inputs.dungeonAttackHealth[i]);
     }
     const inputValuesHash = mimc.multiHash(inputValues, 0, 1);
     inputs.hashIn = mimc.F.toString( inputValuesHash );

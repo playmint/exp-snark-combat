@@ -271,13 +271,17 @@ template Combat(numSeekers, numTicks) {
 
 	// TODO: template this because we use it twice
 	// verify that the input values hash matches the input values
-	component inputValuesHash = MiMCSponge((numSeekers*2)+2, 220, 1);
+	component inputValuesHash = MiMCSponge((numSeekers*6)+2, 220, 1);
 	inputValuesHash.k <== 0;
 	inputValuesHash.ins[0] <== dungeonArmourIn;
 	inputValuesHash.ins[1] <== dungeonHealthIn;
 	for(var i=0; i<numSeekers; i++){
-		inputValuesHash.ins[(i*2)+2] <== seekerArmourIn[i];
-		inputValuesHash.ins[(i*2)+3] <== seekerHealthIn[i];
+		inputValuesHash.ins[(i*6)+2] <== seekerArmourIn[i];
+		inputValuesHash.ins[(i*6)+3] <== seekerHealthIn[i];
+		inputValuesHash.ins[(i*6)+4] <== seekerAttackArmour[i];
+		inputValuesHash.ins[(i*6)+5] <== seekerAttackHealth[i];
+		inputValuesHash.ins[(i*6)+6] <== dungeonAttackArmour[i];
+		inputValuesHash.ins[(i*6)+7] <== dungeonAttackHealth[i];
 	}
 	hashIn === inputValuesHash.outs[0];
 
@@ -340,13 +344,17 @@ template Combat(numSeekers, numTicks) {
 	}
 
 	// build n verify hash of selected tick's health values as public output
-	component selectedValuesHash = MiMCSponge((numSeekers*2)+2, 220, 1);
+	component selectedValuesHash = MiMCSponge((numSeekers*6)+2, 220, 1);
 	selectedValuesHash.k <== 0;
 	selectedValuesHash.ins[0] <== dungeonArmourOut;
 	selectedValuesHash.ins[1] <== dungeonHealthOut;
 	for(var i=0; i<numSeekers; i++){
-		selectedValuesHash.ins[(i*2)+2] <== seekerArmourOut[i];
-		selectedValuesHash.ins[(i*2)+3] <== seekerHealthOut[i];
+		selectedValuesHash.ins[(i*6)+2] <== seekerArmourOut[i];
+		selectedValuesHash.ins[(i*6)+3] <== seekerHealthOut[i];
+		selectedValuesHash.ins[(i*6)+4] <== seekerAttackArmour[i];
+		selectedValuesHash.ins[(i*6)+5] <== seekerAttackHealth[i];
+		selectedValuesHash.ins[(i*6)+6] <== dungeonAttackArmour[i];
+		selectedValuesHash.ins[(i*6)+7] <== dungeonAttackHealth[i];
 	}
 	hashOut <== selectedValuesHash.outs[0];
 

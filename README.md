@@ -15,3 +15,9 @@ To build the circuit, generate some test inputs, build a witness/proof and then 
 ```
 make verify
 ```
+
+## TODO
+
+* [ ] pass in block number, seekerVitality, and seekerDexterity as inputs
+* [ ] regen health every block % vitality
+* [ ] seeker only attack every block % dexterity
