@@ -5,11 +5,11 @@ const numSeekers = parseInt(args[0], 10);
 
 async function main() {
     const inputs = {
-        "selectedTick": 2,
-        "seekerAttackArmour": Array(numSeekers).fill(1),
-        "seekerAttackHealth": Array(numSeekers).fill(1),
-        "dungeonAttackArmour": Array(numSeekers).fill(1),
-        "dungeonAttackHealth": Array(numSeekers).fill(1),
+        "selectedTick": 98,
+        "seekerAttackArmour": Array(numSeekers).fill(5),
+        "seekerAttackHealth": Array(numSeekers).fill(5),
+        "dungeonAttackArmour": Array(numSeekers).fill(10),
+        "dungeonAttackHealth": Array(numSeekers).fill(10),
         "dungeonArmourIn": 100,
         "dungeonHealthIn": 100,
         "seekerHealthIn": Array(numSeekers).fill(100),

@@ -4,6 +4,8 @@ export NODE_OPTIONS="--max-old-space-size=16000"
 
 .PHONY: verify
 verify: verification_key.json proof.json
+	echo "---- inputs + outputs ----"
+	jq . < input.json
 	snarkjs groth16 verify verification_key.json input.json proof.json
 
 verifier.sol: combat_0001.zkey
@@ -17,8 +19,8 @@ combat.r1cs: combat.circom
 	rm -f combat.r1cs
 	circom $< --r1cs
 
-public.json: generate_inputs.js node_modules
-	rm -f input.json public.json
+private.json: generate_inputs.js node_modules
+	rm -f input.json $@
 	node generate_inputs.js 5 > $@
 	echo "---- inputs ----"
 	jq . < $@
@@ -26,14 +28,14 @@ public.json: generate_inputs.js node_modules
 node_modules:
 	npm install
 
-witness.wtns: public.json combat_js/combat.wasm
-	(cd combat_js && node generate_witness.js combat.wasm ../public.json ../witness.wtns)
+witness.wtns: private.json combat_js/combat.wasm
+	(cd combat_js && node generate_witness.js combat.wasm ../private.json ../$@)
 
-proof.json: witness.wtns combat_0001.zkey public.json
-	cp public.json input.json
+input.json: private.json
+	cp private.json input.json
+
+proof.json: witness.wtns combat_0001.zkey input.json
 	snarkjs groth16 prove combat_0001.zkey ./witness.wtns $@ ./input.json
-	echo "---- inputs + outputs ----"
-	jq . < input.json
 
 verification_key.json: combat_0001.zkey
 	snarkjs zkey export verificationkey $< $@
@@ -64,7 +66,7 @@ pot20_final.ptau:
 
 .PHONY: clean
 clean:
-	rm -f public.json
+	rm -f private.json
 	rm -f input.json
 	rm -rf combat_js
 	rm -f combat.r1cs combat.sym
