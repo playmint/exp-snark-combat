@@ -1,0 +1,15 @@
+combat.r1cs
+combat.sym
+combat_0000.zkey
+combat_0001.zkey
+combat_js/
+input.json
+node_modules/
+pot18_final.ptau
+pot20_final.ptau
+pot23_final.ptau
+pot28_final.ptau
+proof.json
+public.json
+verification_key.json
+witness.wtns

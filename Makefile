@@ -1,47 +1,73 @@
 
+# groth16 setup requires lots of ram
+export NODE_OPTIONS="--max-old-space-size=16000"
+
 .PHONY: verify
-verify: proof.json verification_key.json
+verify: verification_key.json proof.json
 	snarkjs groth16 verify verification_key.json input.json proof.json
 
 verifier.sol: combat_0001.zkey
-	snarkjs zkey export solidityverifier combat_0001.zkey verifier.sol
+	snarkjs zkey export solidityverifier combat_0001.zkey $@
 
-combat.wasm: combat.circom
-	circom combat.circom --wasm --sym
+combat_js/combat.wasm: combat.circom
+	rm -rf combat_js
+	circom $< --wasm --sym
 
 combat.r1cs: combat.circom
-	circom combat.circom --r1cs
+	rm -f combat.r1cs
+	circom $< --r1cs
 
-public.json: generate_inputs.js
-	node generate_inputs.js 5 > public.json
+public.json: generate_inputs.js node_modules
+	rm -f input.json public.json
+	node generate_inputs.js 5 > $@
+	echo "---- inputs ----"
+	jq . < $@
 
-combat_js/witness.wtns: public.json combat.wasm
-	(cd combat_js && node generate_witness.js combat.wasm ../public.json witness.wtns)
+node_modules:
+	npm install
 
-proof.json: combat_js/witness.wtns combat_0001.zkey public.json
+witness.wtns: public.json combat_js/combat.wasm
+	(cd combat_js && node generate_witness.js combat.wasm ../public.json ../witness.wtns)
+
+proof.json: witness.wtns combat_0001.zkey public.json
 	cp public.json input.json
-	snarkjs groth16 prove combat_0001.zkey combat_js/witness.wtns ./proof.json ./input.json
+	snarkjs groth16 prove combat_0001.zkey ./witness.wtns $@ ./input.json
+	echo "---- inputs + outputs ----"
+	jq . < input.json
 
 verification_key.json: combat_0001.zkey
-	snarkjs zkey export verificationkey combat_0001.zkey verification_key.json
+	snarkjs zkey export verificationkey $< $@
 
 combat_0001.zkey: combat_0000.zkey
-	echo 'yyy' | snarkjs zkey contribute combat_0000.zkey combat_0001.zkey --name="1st Contributor Name" -v
+	echo 'yyy' | snarkjs zkey contribute $< $@ --name="1st Contributor Name" -v
 
-combat_0000.zkey: pot_final.ptau combat.r1cs
-	snarkjs groth16 setup combat.r1cs pot_final.ptau combat_0000.zkey
+combat_0000.zkey: pot18_final.ptau combat.r1cs
+	snarkjs groth16 setup combat.r1cs $< $@
 
-pot_final.ptau:
-	snarkjs powersoftau new bn128 24 pot_0000.ptau -v
-	echo 'xxx' | snarkjs powersoftau contribute pot_0000.ptau pot_0001.ptau --name="First contribution" -v
-	snarkjs powersoftau prepare phase2 pot_0001.ptau pot_final.ptau -v
+################
+# download a premade powers of tau suitable for up to 1M constraints
+# it's a big file, see below for how to generate it instead
+pot18_final.ptau:
+	curl -o $@ https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_18.ptau
+pot20_final.ptau:
+	curl -o $@ https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_20.ptau
+################
+# Uncomment to generate the ptau instead of downloading it
+# but it will take a while - like hours
+######
+# pot_0000.ptau:
+# 	snarkjs powersoftau new bn128 20 $@ -v
+# pot_0001.ptau: pot_0000.ptau
+# 	echo 'xxx' | snarkjs powersoftau contribute $< $@ --name="First contribution" -v
+# pot20_final.ptau: pot_0001.ptau
+# 	snarkjs powersoftau prepare phase2 $< $@ -v
 
 .PHONY: clean
 clean:
 	rm -f public.json
 	rm -f input.json
 	rm -rf combat_js
-	rm -f combat.r1cs combat.wasm combat.sym
+	rm -f combat.r1cs combat.sym
 	rm -f pot_0000.ptau pot_0001.ptau
 	rm -f combat_0000.zkey combat_0001.zkey
 	rm -f verification_key.json

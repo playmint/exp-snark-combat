@@ -1,0 +1,15 @@
+{
+  "name": "exp-snark-combat",
+  "version": "1.0.0",
+  "description": "## Overview",
+  "main": "generate_inputs.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "circomlib": "^2.0.5",
+    "circomlibjs": "^0.1.7"
+  }
+}

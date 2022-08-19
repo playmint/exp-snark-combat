@@ -2,6 +2,7 @@ pragma circom 2.0.0;
 
 include "comparators.circom";
 include "gates.circom";
+include "mimcsponge.circom";
 
 template Sum(n) {
     signal input in[n];
@@ -130,23 +131,38 @@ template Combat(numSeekers, numTicks) {
 
 	signal input selectedTick;
 
-	// public starting health values
+	// public starting health value hash
+	signal input hashIn;
+
+	// private state values
 	signal input dungeonArmourIn;
 	signal input dungeonHealthIn;
 	signal input seekerHealthIn[numSeekers];
 	signal input seekerArmourIn[numSeekers];
-
-	// public stats values
     signal input seekerAttackArmour[numSeekers];
     signal input seekerAttackHealth[numSeekers];
     signal input dungeonAttackArmour[numSeekers];
     signal input dungeonAttackHealth[numSeekers];
 
-	// public ending health values
+	// public ending state values
 	signal output dungeonArmourOut;
 	signal output dungeonHealthOut;
 	signal output seekerHealthOut[numSeekers];
 	signal output seekerArmourOut[numSeekers];
+	signal output hashOut;
+
+	// TODO: template this because we use it twice
+	// verify that the input values hash matches the input values
+	component inputValuesHash = MiMCSponge((numSeekers*2)+2, 220, 1);
+	inputValuesHash.k <== 0;
+	inputValuesHash.ins[0] <== dungeonArmourIn;
+	inputValuesHash.ins[1] <== dungeonHealthIn;
+	for(var i=0; i<numSeekers; i++){
+		inputValuesHash.ins[(i*2)+2] <== seekerArmourIn[i];
+		inputValuesHash.ins[(i*2)+3] <== seekerHealthIn[i];
+	}
+	hashIn === inputValuesHash.outs[0];
+
 
 	component tick[numTicks];
 
@@ -154,11 +170,6 @@ template Combat(numSeekers, numTicks) {
 	component selectedDungeonHealth = Select(numTicks);
 	component selectedSeekerArmour = SelectArray(numTicks, numSeekers);
 	component selectedSeekerHealth = SelectArray(numTicks, numSeekers);
-
-	selectedDungeonArmour.idx <== selectedTick;
-	selectedDungeonHealth.idx <== selectedTick;
-	selectedSeekerArmour.idx <== selectedTick;
-	selectedSeekerHealth.idx <== selectedTick;
 
 	// wireup t=0 (transition between current healths -> first tick)
 	tick[0] = Tick(numSeekers);
@@ -189,6 +200,10 @@ template Combat(numSeekers, numTicks) {
 	}
 
 	// expose the selected tick's health values as public output signals
+	selectedDungeonArmour.idx <== selectedTick;
+	selectedDungeonHealth.idx <== selectedTick;
+	selectedSeekerArmour.idx <== selectedTick;
+	selectedSeekerHealth.idx <== selectedTick;
 	for(var t=0; t<numTicks; t++){
 		selectedDungeonArmour.in[t] <== tick[t].nextDungeonArmour;
 		selectedDungeonHealth.in[t] <== tick[t].nextDungeonHealth;
@@ -206,17 +221,21 @@ template Combat(numSeekers, numTicks) {
 		seekerHealthOut[i] <== selectedSeekerHealth.out[i];
 	}
 
+	// build n verify hash of selected tick's health values as public output
+	component selectedValuesHash = MiMCSponge((numSeekers*2)+2, 220, 1);
+	selectedValuesHash.k <== 0;
+	selectedValuesHash.ins[0] <== dungeonArmourOut;
+	selectedValuesHash.ins[1] <== dungeonHealthOut;
+	for(var i=0; i<numSeekers; i++){
+		selectedValuesHash.ins[(i*2)+2] <== seekerArmourOut[i];
+		selectedValuesHash.ins[(i*2)+3] <== seekerHealthOut[i];
+	}
+	hashOut <== selectedValuesHash.outs[0];
+
  }
 
  component main {
 	public [
-		dungeonArmourIn,
-		dungeonHealthIn,
-		seekerArmourIn,
-		seekerHealthIn,
-		seekerAttackArmour,
-		seekerAttackHealth,
-		dungeonAttackArmour,
-		dungeonAttackHealth
+		hashIn
 	]
-} = Combat(5, 10000);
+} = Combat(5, 100);
