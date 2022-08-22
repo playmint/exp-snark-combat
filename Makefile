@@ -6,10 +6,10 @@ export NODE_OPTIONS="--max-old-space-size=16000"
 verify: verification_key.json proof.json
 	echo "---- inputs + outputs ----"
 	jq . < input.json
-	snarkjs groth16 verify verification_key.json input.json proof.json
+	npx snarkjs groth16 verify verification_key.json input.json proof.json
 
 verifier.sol: combat_0001.zkey
-	snarkjs zkey export solidityverifier combat_0001.zkey $@
+	npx snarkjs zkey export solidityverifier combat_0001.zkey $@
 
 combat_js/combat.wasm: circuits/combat.circom
 	rm -rf combat_js
@@ -35,16 +35,16 @@ input.json: private.json
 	cp private.json input.json
 
 proof.json: witness.wtns combat_0001.zkey input.json
-	snarkjs groth16 prove combat_0001.zkey ./witness.wtns $@ ./input.json
+	npx snarkjs groth16 prove combat_0001.zkey ./witness.wtns $@ ./input.json
 
 verification_key.json: combat_0001.zkey
-	snarkjs zkey export verificationkey $< $@
+	npx snarkjs zkey export verificationkey $< $@
 
 combat_0001.zkey: combat_0000.zkey
-	echo 'yyy' | snarkjs zkey contribute $< $@ --name="1st Contributor Name" -v
+	echo 'yyy' | npx snarkjs zkey contribute $< $@ --name="1st Contributor Name" -v
 
 combat_0000.zkey: pot18_final.ptau combat.r1cs
-	snarkjs groth16 setup combat.r1cs $< $@
+	npx snarkjs groth16 setup combat.r1cs $< $@
 
 ################
 # download a premade powers of tau suitable for up to 1M constraints
