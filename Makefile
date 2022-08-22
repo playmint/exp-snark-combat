@@ -11,11 +11,11 @@ verify: verification_key.json proof.json
 verifier.sol: combat_0001.zkey
 	snarkjs zkey export solidityverifier combat_0001.zkey $@
 
-combat_js/combat.wasm: combat.circom
+combat_js/combat.wasm: circuits/combat.circom
 	rm -rf combat_js
 	circom $< --wasm --sym
 
-combat.r1cs: combat.circom
+combat.r1cs: circuits/combat.circom
 	rm -f combat.r1cs
 	circom $< --r1cs
 
