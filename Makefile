@@ -25,7 +25,7 @@ private.json: generate_inputs.js node_modules
 	echo "---- inputs ----"
 	jq . < $@
 
-node_modules:
+node_modules: package.json
 	npm install
 
 witness.wtns: private.json combat_js/combat.wasm
