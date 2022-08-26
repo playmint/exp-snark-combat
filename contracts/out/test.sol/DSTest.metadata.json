@@ -325,8 +325,15 @@
       "runs": 200
     },
     "remappings": [
+      ":@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
+      ":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+      ":ERC1967/=lib/ERC1967/src/",
       ":ds-test/=lib/forge-std/lib/ds-test/src/",
-      ":forge-std/=lib/forge-std/src/"
+      ":encoding/=lib/encoding/src/",
+      ":forge-std/=lib/forge-std/src/",
+      ":opensea/=lib/opensea/src/",
+      ":openzeppelin-contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/",
+      ":openzeppelin-contracts/=lib/openzeppelin-contracts/"
     ]
   },
   "sources": {

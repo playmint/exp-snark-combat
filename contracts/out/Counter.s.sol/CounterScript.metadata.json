@@ -71,8 +71,15 @@
       "runs": 200
     },
     "remappings": [
+      ":@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
+      ":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+      ":ERC1967/=lib/ERC1967/src/",
       ":ds-test/=lib/forge-std/lib/ds-test/src/",
-      ":forge-std/=lib/forge-std/src/"
+      ":encoding/=lib/encoding/src/",
+      ":forge-std/=lib/forge-std/src/",
+      ":opensea/=lib/opensea/src/",
+      ":openzeppelin-contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/",
+      ":openzeppelin-contracts/=lib/openzeppelin-contracts/"
     ]
   },
   "sources": {
@@ -109,11 +116,11 @@
       ]
     },
     "script/Counter.s.sol": {
-      "keccak256": "0x01edaa1835b1a5bd3f4f66f73451488b8441d30642d3bf1f5fa2c5bf7c005bee",
+      "keccak256": "0x459dc20578a5e0b7da8ef3a5e9c2fa134276dca000d6c44832a341ab802f8cec",
       "license": "UNLICENSED",
       "urls": [
-        "bzz-raw://3c6a0f19216ceeebf4ec16f8f2662a3bebbe18d4037d1399adf2e3e4ccbb57a2",
-        "dweb:/ipfs/Qmc8NknjPkSgbXLg6zZQ8uKT6kAWBvBXz5JrDvZfa88UNT"
+        "bzz-raw://d1c59d084e9dcf352bf0c358d89e9700aaf07b4bf39054839e30fd302210c6a1",
+        "dweb:/ipfs/QmbRbLZuvnr6hr9VP23Sf1sc6LmjHEdNCvV8wMKia2v7Ys"
       ]
     }
   },

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "./ERC1967/ERC1967ProxyImplementation.sol";
-import "./OpenSea/ERC721TradableUpgradeable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
-import "./Base64.sol";
+import "encoding/Base64.sol";
 
 struct SeekerData {
     uint id;
@@ -29,7 +29,7 @@ struct SeekerData {
     uint16 composition;
 }
 
-contract Seeker is ProxyImplementation, ERC721TradableUpgradeable {
+contract Seeker is ERC721Enumerable, Ownable {
     string public _collectionName;
     string public _collectionDesc;
     string public _collectionImgURL;
@@ -43,45 +43,14 @@ contract Seeker is ProxyImplementation, ERC721TradableUpgradeable {
     uint256[16] public _maxMintable; // by generation
     mapping(uint256 => uint256) public _attrs;
 
-    mapping(address => bool) private _whitelistedContracts;
-    modifier onlyWhitelisted {
-        require(isContractWhitelisted(_msgSender()), "contract not whitelisted");
-        _;
-    }
-
-    function init(
-        string memory name,
-        string memory symbol,
-        address proxyRegistryAddress,
-        string memory collectionName,
-        string memory collectionDesc,
-        string memory collectionImgURL,
-        string memory collectionExtURL,
-        uint256 feeBasisPoints,
-        address feeRecipient,
-        string memory imageBaseURL
-    ) public onlyOwner initializer {
-        _initializeEIP712(name);
-        __Context_init_unchained();
-        __ERC165_init_unchained();
-        __ERC721_init_unchained(name, symbol);
-        __ERC721TradableUpgradeable_init_unchained(proxyRegistryAddress);
-
-        _collectionName = collectionName;
-        _collectionDesc = collectionDesc;
-        _collectionImgURL = collectionImgURL;
-        _collectionExtURL = collectionExtURL;
-        _feeBasisPoints = feeBasisPoints;
-        _feeRecipient = feeRecipient;
-        _imageBaseURL = imageBaseURL;
-    }
+    constructor() ERC721("Seeker", "Seeker") Ownable() {}
 
     function exists(uint256 tokenId) public view returns(bool) {
         return _exists(tokenId);
     }
 
     // mint seeker
-    function mint(address to, uint8 generation, uint8[8] memory attrs) public onlyWhitelisted returns (uint256 tokenId) {
+    function mint(address to, uint8 generation, uint8[8] memory attrs) public returns (uint256 tokenId) {
         require(_totalMinted[generation] < _maxMintable[generation], "tokenId out of range for genesis");
         tokenId = _count + 1;
         _totalMinted[generation]++;
@@ -155,7 +124,7 @@ contract Seeker is ProxyImplementation, ERC721TradableUpgradeable {
         return string(abi.encodePacked(
             _imageBaseURL,
             'seeker/',
-            StringsUpgradeable.toString(data.id),
+            Strings.toString(data.id),
             '/',
             getImageParams(data),
             '/1080x1080.png'
@@ -200,13 +169,13 @@ contract Seeker is ProxyImplementation, ERC721TradableUpgradeable {
 
     function getTraitJSON(string memory key, uint256 value, uint256 max) internal pure returns (string memory) {
         return string(abi.encodePacked(
-            '{"trait_type": "', key, '", "value": ', StringsUpgradeable.toString(value), ', "max_value": ', StringsUpgradeable.toString(max), '},'
+            '{"trait_type": "', key, '", "value": ', Strings.toString(value), ', "max_value": ', Strings.toString(max), '},'
         ));
     }
 
     function getTraitJSON(string memory key, uint256 value) internal pure returns (string memory) {
         return string(abi.encodePacked(
-            '{"trait_type": "', key, '", "value": ', StringsUpgradeable.toString(value), '},'
+            '{"trait_type": "', key, '", "value": ', Strings.toString(value), '},'
         ));
     }
 
@@ -238,7 +207,7 @@ contract Seeker is ProxyImplementation, ERC721TradableUpgradeable {
 
     function getGenerationAttributesJSON(SeekerData memory data) internal pure returns (string memory) {
         return string(abi.encodePacked(
-            '{"trait_type": "Generation", "value": ', StringsUpgradeable.toString(data.generation), '}'
+            '{"trait_type": "Generation", "value": ', Strings.toString(data.generation), '}'
         ));
     }
 
@@ -257,8 +226,8 @@ contract Seeker is ProxyImplementation, ERC721TradableUpgradeable {
             "\"description\": \"", _collectionDesc, "\","
             "\"image\": \"", _collectionImgURL, "\",",
             "\"external_link\": \"", _collectionExtURL,"\",",
-            "\"seller_fee_basis_points\": \"", StringsUpgradeable.toString(_feeBasisPoints),"\",",
-            "\"fee_recipient\": \"", StringsUpgradeable.toHexString(uint256(uint160(_feeRecipient)), 20),"\"",
+            "\"seller_fee_basis_points\": \"", Strings.toString(_feeBasisPoints),"\",",
+            "\"fee_recipient\": \"", Strings.toHexString(uint256(uint160(_feeRecipient)), 20),"\"",
             "}"
         ));
     }
@@ -409,19 +378,5 @@ contract Seeker is ProxyImplementation, ERC721TradableUpgradeable {
         _maxMintable[generation] = maxMintable;
     }
 
-    function isContractWhitelisted(address addr) public view returns(bool) {
-        return _whitelistedContracts[addr];
-    }
-
-    function addWhitelistedContract(address addr) public onlyOwner {
-        require(AddressUpgradeable.isContract(addr), "address is not a contract");
-        require(!isContractWhitelisted(addr), "already whitelisted");
-        _whitelistedContracts[addr] = true;
-    }
-
-    function removeWhitelistedContract(address addr) public onlyOwner {
-        require(isContractWhitelisted(addr), "not whitelisted");
-        _whitelistedContracts[addr] = false;
-    }
 
 }

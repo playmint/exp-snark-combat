@@ -1,0 +1,58 @@
+{
+  "compiler": {
+    "version": "0.8.16+commit.07a7930e"
+  },
+  "language": "Solidity",
+  "output": {
+    "abi": [],
+    "devdoc": {
+      "author": "Brecht Devos <brecht@loopring.org>",
+      "kind": "dev",
+      "methods": {},
+      "title": "Base64",
+      "version": 1
+    },
+    "userdoc": {
+      "kind": "user",
+      "methods": {},
+      "notice": "Provides a function for encoding some bytes in base64",
+      "version": 1
+    }
+  },
+  "settings": {
+    "compilationTarget": {
+      "lib/encoding/src/Base64.sol": "Base64"
+    },
+    "evmVersion": "london",
+    "libraries": {},
+    "metadata": {
+      "bytecodeHash": "ipfs"
+    },
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    },
+    "remappings": [
+      ":@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
+      ":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+      ":ERC1967/=lib/ERC1967/src/",
+      ":ds-test/=lib/forge-std/lib/ds-test/src/",
+      ":encoding/=lib/encoding/src/",
+      ":forge-std/=lib/forge-std/src/",
+      ":opensea/=lib/opensea/src/",
+      ":openzeppelin-contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/",
+      ":openzeppelin-contracts/=lib/openzeppelin-contracts/"
+    ]
+  },
+  "sources": {
+    "lib/encoding/src/Base64.sol": {
+      "keccak256": "0x508bb95ea6e2c424df202b3aa25454b22eeea46400cdd30959d477663e485a09",
+      "license": "MIT",
+      "urls": [
+        "bzz-raw://f4aa9de7fc6dc88f394df188a5d6c2c399efbdb34b74b1500c3704347e3f6792",
+        "dweb:/ipfs/QmYK53J4zbyiSc4zefxQt9D6avxfY7keSj9aVXEiPdVyju"
+      ]
+    }
+  },
+  "version": 1
+}
