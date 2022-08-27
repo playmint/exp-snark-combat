@@ -320,12 +320,14 @@ template SelectAction(n, numOutputs) {
 		seekerAttackHealthOut[j] <== seekerAttackHealthSum[j].out;
 	}
 }
+
 template Combat2(numSeekers, numTicks, numActions) {
 	signal input dungeonAttackArmour[numTicks][numSeekers];
 	signal input dungeonAttackHealth[numTicks][numSeekers];
 	signal input seekerAttackArmour[numTicks][numSeekers];
 	signal input seekerAttackHealth[numTicks][numSeekers];
 	signal input seekerValuesHash[numSeekers];
+	signal input seekerValuesUpdated[numTicks][numSeekers];
 
 	// seekerSlot indicates which seeker data
 	// we will be building a proof for
@@ -336,42 +338,58 @@ template Combat2(numSeekers, numTicks, numActions) {
 	signal output seekerArmourFinal;
 	signal output seekerHealthFinal;
 
-	// hash all action inputs
-	// signal input actionInputHash
+	// check that the given seekerValuesHashes match the given attack values
+	component seekerValuesHashSum[numTicks*numSeekers];
+	signal seekerValuesHashCalc[numTicks*numSeekers];
+	signal seekerValuesHashPrev[numTicks*numSeekers];
 	component seekerValuesHasher[numTicks*numSeekers];
+	component seekerValuesIsNotUpdate[numTicks*numSeekers];
+	signal prevDungeonAttackArmour[numTicks*numSeekers];
+	signal prevDungeonAttackHealth[numTicks*numSeekers];
+	signal prevSeekerAttackArmour[numTicks*numSeekers];
+	signal prevSeekerAttackHealth[numTicks*numSeekers];
 	var h = 0;
 	for(var i=0; i<numSeekers; i++){
-		var first = 1;
-		for(var t=numTicks-1; t>=0; t--){
-			seekerValuesHasher[h] = Poseidon(5);
-			seekerValuesHasher[h].inputs[0] <== first == 1 ? 0 : seekerValuesHasher[h-1].out;
+		for(var t=0; t<numTicks; t++){
+			// keep track of the prev hash value or default to 0
+			seekerValuesHashPrev[h] <== t==0 == 1 ? 0 : seekerValuesHashCalc[h-1];
+			// hash the prev value + this tick's values
+			seekerValuesHasher[h] = Poseidon(6);
+			seekerValuesHasher[h].inputs[0] <== seekerValuesHashPrev[h];
 			seekerValuesHasher[h].inputs[1] <== dungeonAttackArmour[t][i];
 			seekerValuesHasher[h].inputs[2] <== dungeonAttackHealth[t][i];
 			seekerValuesHasher[h].inputs[3] <== seekerAttackArmour[t][i];
 			seekerValuesHasher[h].inputs[4] <== seekerAttackHealth[t][i];
+			seekerValuesHasher[h].inputs[5] <== t;
+			// only include the hash of this tick's values in the final seeker hash if
+			// this tick has been marked as a tick where an action ocurred via the presence
+			// of a "1" in the seekerValuesUpdated input for this tick
+			seekerValuesIsNotUpdate[h] = IsZero();
+			seekerValuesIsNotUpdate[h].in <== seekerValuesUpdated[t][i];
+			seekerValuesHashSum[h] = Sum(2);
+			seekerValuesHashSum[h].in[0] <== seekerValuesHashPrev[h] * seekerValuesIsNotUpdate[h].out;
+			seekerValuesHashSum[h].in[1] <== seekerValuesHasher[h].out * (1-seekerValuesIsNotUpdate[h].out);
+			seekerValuesHashCalc[h] <== seekerValuesHashSum[h].out;
+			// ensure that if this is NOT an "action tick" then this tick's values
+			// should be identical to the previous tick's values.
+			// if we don't do this, then someone could spoof the input
+			prevDungeonAttackArmour[h] <== t == 0 ? 0 : (dungeonAttackArmour[t-1][i] * seekerValuesIsNotUpdate[h].out);
+			dungeonAttackArmour[t][i] * seekerValuesIsNotUpdate[h].out === prevDungeonAttackArmour[h];
+			prevDungeonAttackHealth[h] <== t == 0 ? 0 : (dungeonAttackHealth[t-1][i] * seekerValuesIsNotUpdate[h].out);
+			dungeonAttackHealth[t][i] * seekerValuesIsNotUpdate[h].out === prevDungeonAttackHealth[h];
+			prevSeekerAttackArmour[h] <== t == 0 ? 0 : (seekerAttackArmour[t-1][i] * seekerValuesIsNotUpdate[h].out);
+			seekerAttackArmour[t][i] * seekerValuesIsNotUpdate[h].out === prevSeekerAttackArmour[h];
+			prevSeekerAttackHealth[h] <== t == 0 ? 0 : (seekerAttackHealth[t-1][i] * seekerValuesIsNotUpdate[h].out);
+			seekerAttackHealth[t][i] * seekerValuesIsNotUpdate[h].out === prevSeekerAttackHealth[h];
+			// inc
 			h++;
-			first = 0;
 		}
-		seekerValuesHash[i] === seekerValuesHasher[h-1].out;
+		seekerValuesHash[i] === seekerValuesHashCalc[h-1];
 	}
 
+	// for each tick, calculate the armour/health values
 	component tick[numTicks];
-	/* component selectedInputs[numTicks]; */
-
 	for(var t=0; t<numTicks; t++){
-		// find the correct input values for this tick
-		/* selectedInputs[t] = SelectAction(numActions, numSeekers); */
-		/* selectedInputs[t].tick <== t; */
-		/* for(var a=0; a<numActions; a++){ */
-		/* 	selectedInputs[t].after[a] <== actionBlock[a]; */
-		/* 	for(var i=0; i<numSeekers; i++){ */
-		/* 		selectedInputs[t].dungeonAttackArmourIn[a][i] <== dungeonAttackArmour[a][i]; */
-		/* 		selectedInputs[t].dungeonAttackHealthIn[a][i] <== dungeonAttackHealth[a][i]; */
-		/* 		selectedInputs[t].seekerAttackArmourIn[a][i] <== seekerAttackArmour[a][i]; */
-		/* 		selectedInputs[t].seekerAttackHealthIn[a][i] <== seekerAttackHealth[a][i]; */
-		/* 	} */
-		/* } */
-		// tick
 		tick[t] = Tick(numSeekers);
 		tick[t].prevDungeonArmour <== t == 0 ? 100 : tick[t-1].nextDungeonArmour;
 		tick[t].prevDungeonHealth <== t == 0 ? 100 : tick[t-1].nextDungeonHealth;
@@ -384,6 +402,8 @@ template Combat2(numSeekers, numTicks, numActions) {
 			tick[t].prevSeekerHealth[i] <== t == 0 ? 100 : tick[t-1].nextSeekerHealth[i];
 		}
 	}
+
+	// TODO: pick which tick we output the values for
 
 	// output dungeon healths
 	dungeonHealthFinal <== tick[numTicks-1].nextDungeonHealth;

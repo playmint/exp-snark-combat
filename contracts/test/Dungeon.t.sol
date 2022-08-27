@@ -98,13 +98,14 @@ contract DungeonTest is Test {
     }
 
     function testProof() public {
-        // roll forward to a larger block num
+        // roll forward to a larger block num and start battle
         uint blk = 13773000;
         vm.roll(blk);
-        // add seekers to all slots (replicating what generate_input.js does)
-        uint seekerID;
         dungeon.resetBattle();
-        for (uint s=0; s<NUM_SEEKERS; s++) {
+        // add seekers to all slots (replicating what generate_input.js does)
+        vm.roll(++blk);
+        uint seekerID;
+        for (uint s=0; s<NUM_SEEKERS-1; s++) {
             seekerID = setUpSeeker();
             dungeon.send(
                 Action.ENTER,
@@ -115,7 +116,7 @@ contract DungeonTest is Test {
             );
         }
 
-        // pick slot (same as generate_input.js)
+        // pick slot (same as set in generate_input.js)
         int8 slotID = 0;
 
         // emulate someone passing in a proof...

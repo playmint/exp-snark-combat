@@ -9,7 +9,7 @@ import "./Rune.sol";
 import "forge-std/console2.sol"; // FIXME: remove
 
 interface IPoseidonHasher {
-    function poseidon(uint256[5] memory inp) external pure returns (uint256 out);
+    function poseidon(uint256[6] memory inp) external pure returns (uint256 out);
 }
 
 enum Action {
@@ -180,7 +180,7 @@ contract Dungeon {
         uint8 slotID
     ) private {
         slots[slotID].seekerID = 0;
-        slots[slotID].hash = 17257659134915904690545691500174578522357305172162686335509530090665176343474; // hash of the zero value
+        slots[slotID].hash = 0;
         slots[slotID].actions = new uint[](0);
     }
 
@@ -295,45 +295,62 @@ contract Dungeon {
     //        1) relied on tx calldata for storage of actions
     //        2) calc this hash off-chain and verify the transition with a proof
     function appendAction(Action action, uint slotID, uint8[7] memory args) public {
+        // store the action data
+        // TODO: move off chain
         slots[slotID].actions.push( encodeAction(action, args) );
-        slots[slotID].hash = calcSlotHash(slotID);
+        // update the hash
+        slots[slotID].hash = hasher.poseidon([
+            slots[slotID].hash,
+            args[1],
+            args[2],
+            args[3],
+            args[4],
+            args[0] // tick
+        ]);
+        console2.log('hash', slotID, uint(slots[slotID].hash), uint(args[0]));
+        console2.log('hash', slotID, uint(slots[slotID].hash), uint(args[1]));
+        console2.log('hash', slotID, uint(slots[slotID].hash), uint(args[2]));
+        console2.log('hash', slotID, uint(slots[slotID].hash), uint(args[3]));
+        console2.log('hash', slotID, uint(slots[slotID].hash), uint(args[4]));
+        console2.log('----');
     }
 
-    function calcSlotHash(uint slotID) private view returns (uint256){
-        Slot storage slot = slots[slotID];
+    // function calcSlotHash(uint slotID) private view returns (uint256){
+    //     Slot storage slot = slots[slotID];
 
-        uint inputValuesHash = 0;
-        Action action;
-        uint8[7] memory args;
 
-        uint8 t = uint8(NUM_TICKS);
-        uint8 untilTick;
-        uint8 dungeonAttackArmour;
-        uint8 dungeonAttackHealth;
-        uint8 seekerAttackArmour;
-        uint8 seekerAttackHealth;
-        for (uint i=slot.actions.length; i>0; i--) {
-            (action, args) = decodeAction(slot.actions[i-1]);
-            if (action == Action.ENTER || action == Action.EQUIP) {
-                untilTick = i==1 ? 0 : args[0];
-                dungeonAttackArmour = args[1];
-                dungeonAttackHealth = args[2];
-                seekerAttackArmour = args[3];
-                seekerAttackHealth = args[4];
-                while (t >= untilTick+1) {
-                    inputValuesHash = hasher.poseidon([
-                        inputValuesHash,
-                        dungeonAttackArmour,
-                        dungeonAttackHealth,
-                        seekerAttackArmour,
-                        seekerAttackHealth
-                    ]);
-                    t--;
-                }
-            }
-        }
-        return inputValuesHash;
-    }
+    //     uint inputValuesHash = 0;
+    //     Action action;
+    //     uint8[7] memory args;
+
+    //     uint8 t = uint8(NUM_TICKS);
+    //     uint8 untilTick;
+    //     uint8 dungeonAttackArmour;
+    //     uint8 dungeonAttackHealth;
+    //     uint8 seekerAttackArmour;
+    //     uint8 seekerAttackHealth;
+    //     for (uint i=slot.actions.length; i>0; i--) {
+    //         (action, args) = decodeAction(slot.actions[i-1]);
+    //         if (action == Action.ENTER || action == Action.EQUIP) {
+    //             untilTick = i==1 ? 0 : args[0];
+    //             dungeonAttackArmour = args[1];
+    //             dungeonAttackHealth = args[2];
+    //             seekerAttackArmour = args[3];
+    //             seekerAttackHealth = args[4];
+    //             while (t >= untilTick+1) {
+    //                 inputValuesHash = hasher.poseidon([
+    //                     inputValuesHash,
+    //                     dungeonAttackArmour,
+    //                     dungeonAttackHealth,
+    //                     seekerAttackArmour,
+    //                     seekerAttackHealth
+    //                 ]);
+    //                 t--;
+    //             }
+    //         }
+    //     }
+    //     return inputValuesHash;
+    // }
 
     // pack an action and associated args into a single uint256
     function encodeAction(Action action, uint8[7] memory args) public pure returns (uint256) {
