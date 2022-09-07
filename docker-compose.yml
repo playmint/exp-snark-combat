@@ -1,0 +1,55 @@
+version: '3'
+
+services:
+
+  # hardhat is a local evm compatiable chain deployment
+  # for testing against. this container starts up a new chain
+  # and provisions our contracts.
+  # RPC is available at http://localhost:8545
+  hardhat:
+    restart: always
+    build:
+      context: ./contracts
+    environment:
+      DUNGEON_STRENGTH: "weak"
+      RELIC_ASSETS_URL: "http://localhost:8080/"
+      MINER_BLOCKTIME: "1"
+    ports:
+      - 8545:8545
+    volumes:
+      - ./contracts/scripts:/contracts/scripts
+      - ./contracts/src:/contracts/src
+      - ./contracts/lib:/contracts/lib
+      - deployment-config:/config
+      - hardhat-artifacts:/solidity/artifacts
+      - hardhat-cache:/solidity/cache
+      - hardhat-db:/db
+      - hardhat-deployments:/contracts/deployments
+      - .:/host
+
+
+  # frontend is the main crypt client
+  # the UI is available at: http://localhost:3005
+  frontend:
+    restart: always
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      NEXT_PUBLIC_ETHEREUM_NETWORK: "localhost"
+      NEXT_PUBLIC_CHAIN_ID: "31337"
+    ports:
+      - 3000:3000
+    volumes:
+      - ./frontend:/app
+      - /app/.next
+      - deployment-config:/contracts/deployments
+    profiles:
+      - dev
+
+volumes:
+  deployment-config:
+  hardhat-artifacts:
+  hardhat-cache:
+  hardhat-db:
+  hardhat-deployments:
