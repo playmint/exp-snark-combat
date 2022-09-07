@@ -17,16 +17,15 @@ import * as circomlib from 'circomlibjs';
 
 const numSeekers = 3;
 const numTicks = 100;
-let snarkjs: any; // loaded from window
 
-// enum Alignment {
-//     NONE,
-//     LIGHT,
-//     DARK,
-//     ORDER,
-//     CHAOS,
-//     ARCANE
-// }
+enum Alignment {
+    NONE,
+    LIGHT,
+    DARK,
+    ORDER,
+    CHAOS,
+    ARCANE
+}
 
 enum ActionKind {
     ENTER,
@@ -62,7 +61,7 @@ interface DeploymentConfig {
 }
 
 const injectedConnector = new InjectedConnector({
-    supportedChainIds: [5]
+    supportedChainIds: [5, 31337]
 });
 
 const getLibrary = (provider: any): Web3Provider => {
@@ -170,7 +169,7 @@ export const Login = (): JSX.Element => {
 
 interface ActionButtonProps {
     kind: ActionKind;
-    slotID: number;
+    seekerID: number;
     attackRuneID: number;
     armourRuneID: number;
     healthRuneID: number;
@@ -179,16 +178,16 @@ interface ActionButtonProps {
 }
 const ActionButton = (props: ActionButtonProps): JSX.Element => {
     const { dungeonContract } = useContext(ContractProviderContext);
-    const { label, disabled, kind, slotID, attackRuneID, armourRuneID, healthRuneID } = props;
+    const { label, disabled, kind, seekerID, attackRuneID, armourRuneID, healthRuneID } = props;
 
     const send = async () => {
-        return dungeonContract.send(kind, slotID, attackRuneID, armourRuneID, healthRuneID);
+        return dungeonContract.send(kind, seekerID, attackRuneID, armourRuneID, healthRuneID);
     };
 
     const handleSend = () => {
         send()
             .then(() => {
-                console.log('committed', kind, slotID, attackRuneID);
+                console.log('committed', kind, seekerID, attackRuneID);
             })
             .catch((err) => console.error(err));
     };
@@ -208,6 +207,7 @@ export const Main = (): JSX.Element => {
     console.log('account', account);
     const { seekerContract, dungeonContract } = useContext(ContractProviderContext);
     const [gameState, setGameState] = useState({} as CombatState);
+    const [loading, setLoading] = useState(false);
 
     const mintSeeker = async () => {
         if (!account) {
@@ -233,15 +233,33 @@ export const Main = (): JSX.Element => {
             .catch((err) => console.error(err));
     };
 
-    const getCurrentTick = async (): Promise<number> => {
-        const battleStart = await dungeonContract.dungeonBattleStart().then((n) => n.toNumber());
+    const handleClaimRune = () => {
+        dungeonContract
+            .claimRune(gameState as any)
+            .then((tx) => tx.wait())
+            .then(() => console.log('claimed'))
+            .catch((err) => console.error(err));
+    };
+
+    const handleResetBattle = () => {
+        dungeonContract
+            .resetBattle(Alignment.LIGHT, Alignment.LIGHT, Alignment.LIGHT, Alignment.DARK)
+            .then((tx) => tx.wait())
+            .then(() => console.log('reset'))
+            .catch((err) => console.error(err));
+    };
+
+    const getCurrentTick = async (battleStart: number): Promise<number> => {
         const currentBlock = await library.getBlockNumber();
         return currentBlock - battleStart;
     };
 
     const getGameState = async (tick?: number): Promise<CombatState> => {
+        const battleStart = await dungeonContract.dungeonBattleStart().then((n) => n.toNumber());
         // fetch all the Action events
-        const events = await dungeonContract.queryFilter(dungeonContract.filters.Action(), 0, 500);
+        const events = await dungeonContract
+            .queryFilter(dungeonContract.filters.Action(), 0, 500)
+            .then((events) => events.filter((evt) => evt.blockNumber >= battleStart));
         // group the Actions by their seeker slot
         const slots = events.reduce(
             (slots, { args }) => {
@@ -266,19 +284,17 @@ export const Main = (): JSX.Element => {
         );
         // console.log('actions', slots);
         // fetch the current block and convert to ticks since battle started
-        const currentTick = Math.min(tick ? tick : await getCurrentTick(), 99);
+        const currentTick = Math.min(tick ? tick : await getCurrentTick(battleStart), 99);
+        console.log('current tick', currentTick);
         // expand each action to cover each tick
         // (this is the input the circuit needs)
         const currentSeeker = 0; // generate health for this slot (the seeker we care about)
         const inputs = await generateInputs(slots, currentSeeker, currentTick);
+        console.log('inputs', inputs);
         // evaluate the circuit / build proof to get the valid outputs
         //
-        // witness
-        const wtns = { type: 'mem' };
-        await snarkjs.wtns.calculate(inputs, 'combat_js/combat.wasm', wtns);
-        // proof
-        const zkey_final = 'combat_0001.zkey';
-        const outputs = await snarkjs.groth16.prove(zkey_final, wtns);
+        const { snarkjs } = window as any; // can't load via webpack :shrug:
+        const outputs = await snarkjs.groth16.fullProve(inputs, 'combat_js/combat.wasm', 'combat_0001.zkey');
         // now we have the public signals and can build the current verified state
         const [
             dungeonArmour,
@@ -369,24 +385,27 @@ export const Main = (): JSX.Element => {
         return inputs;
     };
 
-    // const handleRaidSuccess = () => {
-    //     refetch()
-    //         .then(() => console.log('refetched'))
-    //         .catch((err) => console.error(err));
-    // };
-
     useEffect(() => {
         if (!library) {
             return;
         }
-        library.on('block', () => {
+        library.on('block', (block: any) => {
+            if (loading) {
+                return;
+            }
+            setLoading(true);
             getGameState()
                 .then((gameState) => setGameState(gameState))
-                .catch((err) => console.log('failed to getGameState:', err));
+                .then(() => console.log('new state', block.number))
+                .catch((err) => console.log('failed to getGameState:', err))
+                .finally(() => setLoading(false));
         });
-    }, [library]);
+        return () => {
+            library.removeEventListeners();
+        };
+    }, [library === undefined]);
 
-    const seekers: any[] = [];
+    const seekers: any[] = [1, 2, 3];
 
     return (
         <div>
@@ -394,16 +413,16 @@ export const Main = (): JSX.Element => {
                 <button className="box-item" onClick={handleMintSeeker}>
                     Mint Seeker
                 </button>
+                <button className="box-item" onClick={handleResetBattle}>
+                    Restart
+                </button>
             </div>
             <div className="dungeons">
-                {seekers.map((idx) => (
+                {seekers.map((seekerID, idx) => (
                     <div key={idx} className="dungeon-card">
-                        <p> Seeker in Slot {idx}</p>
-                        <p> Health: x</p>
-                        <p> Strength (against armour): x</p>
-                        <p> Strength (against health): x</p>
+                        <h2>Seeker #{seekerID}</h2>
                         <ActionButton
-                            slotID={idx}
+                            seekerID={seekerID}
                             kind={ActionKind.ENTER}
                             label="Join"
                             attackRuneID={0}
@@ -411,16 +430,19 @@ export const Main = (): JSX.Element => {
                             healthRuneID={0}
                             disabled={false}
                         />
+                        {idx == 0 && <p>armour: {gameState.seekerArmour}</p>}
+                        {idx == 0 && <p>health: {gameState.seekerHealth}</p>}
+                        {idx == 0 && gameState.dungeonArmour < 30 && (
+                            <button onClick={handleClaimRune}>Claim Rune</button>
+                        )}
                     </div>
                 ))}
             </div>
-            <div className="state">
-                <p>seeker: {gameState.slot}</p>
+            <div className="state" style={{ clear: 'both' }}>
+                <p>loading: {loading ? 'yes' : 'no'}</p>
                 <p>tick: {gameState.tick}</p>
                 <p>dungeonArmour: {gameState.dungeonArmour}</p>
                 <p>dungeonHealth: {gameState.dungeonHealth}</p>
-                <p>seekerArmour: {gameState.seekerArmour}</p>
-                <p>seekerHealth: {gameState.seekerHealth}</p>
             </div>
         </div>
     );
@@ -432,7 +454,6 @@ const App: NextPage = () => {
     // load the config from the compiled deployment artefacts
     // if this file is missing then you probably need to redeploy
     useEffect(() => {
-        ({ snarkjs } = window as any); // can't load via webpack :shrug:
         import(`../../../contracts/deployments/localhost.json`)
             .then((mod) => setConfig(mod.default as DeploymentConfig))
             .catch((err) => console.error('failed to load contract config', err));
@@ -446,6 +467,7 @@ const App: NextPage = () => {
         <Fragment>
             <Head>
                 <title>SNARKCombat</title>
+                <script src="snarkjs.min.js" />
             </Head>
             <link rel="preconnect" href="https://fonts.googleapis.com" />
             <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="crossOrigin" />
@@ -453,14 +475,13 @@ const App: NextPage = () => {
                 href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap"
                 rel="stylesheet"
             />
-            <script src="snarkjs.min.js"></script>
             <Web3ReactProvider getLibrary={getLibrary}>
                 <ContractProvider config={config as DeploymentConfig}>
                     <div id="backplate">
                         <video src="/backplate.mp4" autoPlay={true} loop={true} muted={true} />
                     </div>
                     <div id="main">
-                        <h1>The Crypt Lite</h1>
+                        <h1>The SNARKy Crypt</h1>
                         <Login />
                         <Main />
                     </div>

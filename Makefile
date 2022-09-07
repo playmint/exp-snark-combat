@@ -10,6 +10,17 @@ export NODE_OPTIONS="--max-old-space-size=16000"
 verifier.sol: combat_0001.zkey
 	npx snarkjs zkey export solidityverifier combat_0001.zkey $@
 
+circuits/combatfast.circom: circuits/combat.circom
+	sed 's/<==/<--/g' <$< | sed 's/==>/-->/g' > $@
+
+combatfast_js/combatfast.wasm: circuits/combatfast.circom
+	rm -rf combat_fast_js
+	circom $< --wasm --sym
+
+combatfast.r1cs: circuits/combatfast.circom
+	rm -f combatfast.r1cs
+	circom $< --r1cs
+
 combat_js/combat.wasm: circuits/combat.circom
 	rm -rf combat_js
 	circom $< --wasm --sym
@@ -45,6 +56,12 @@ combat_0001.zkey: combat_0000.zkey
 
 combat_0000.zkey: pot18_final.ptau combat.r1cs
 	npx snarkjs groth16 setup combat.r1cs $< $@
+
+combatfast_0001.zkey: combatfast_0000.zkey
+	echo 'yyy' | npx snarkjs zkey contribute $< $@ --name="1st Contributor Name" -v
+
+combatfast_0000.zkey: pot18_final.ptau combatfast.r1cs
+	npx snarkjs groth16 setup combatfast.r1cs $< $@
 
 contracts/src/CombatVerifier.sol: verifier.sol
 	sed <$< 's/0.6.11/0.8.11/g' >$@
