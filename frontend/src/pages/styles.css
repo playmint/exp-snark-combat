@@ -1,0 +1,147 @@
+
+@font-face {
+	font-family: 'Baskerville';
+	src: url('/fonts/Baskerville-SemiBoldItalic.woff2') format('woff2'),
+	url('/fonts/Baskerville-SemiBoldItalic.woff') format('woff');
+	font-weight: 600;
+	font-style: italic;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Baskerville';
+	src: url('/fonts/Baskerville-SemiBold.woff2') format('woff2'),
+	url('/fonts/Baskerville-SemiBold.woff') format('woff');
+	font-weight: 600;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Baskerville';
+	src: url('/fonts/Baskerville.woff2') format('woff2'), url('/fonts/Baskerville.woff') format('woff');
+	font-weight: normal;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Baskerville';
+	src: url('/fonts/Baskerville-BoldItalic.woff2') format('woff2'),
+	url('/fonts/Baskerville-BoldItalic.woff') format('woff');
+	font-weight: bold;
+	font-style: italic;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Baskerville';
+	src: url('/fonts/Baskerville-Italic.woff2') format('woff2'),
+	url('/fonts/Baskerville-Italic.woff') format('woff');
+	font-weight: normal;
+	font-style: italic;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Baskerville';
+	src: url('/fonts/Baskerville-Bold.woff2') format('woff2'), url('/fonts/Baskerville-Bold.woff') format('woff');
+	font-weight: bold;
+	font-style: normal;
+	font-display: swap;
+}
+
+body {
+	background: #111;
+	padding: 20px 20px 60px;
+	font-family: 'Baskerville', serif;
+	font-weight: 400;
+	color: #dfdfdf;
+}
+
+h1 {
+	font-family: 'Baskerville', serif;
+	font-weight: 400;
+	margin:10px;
+	font-size: 3em;
+	color: #aaa;
+}
+
+#backplate {
+	width: 100vw;
+	height: 100vh;
+	object-fit: cover;
+	position: fixed;
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	z-index: -1;
+}
+#backplate video {
+	object-fit: cover;
+	width: 100%;
+	height: 100%;
+}
+
+#main {
+	width: 1000px;
+}
+
+.box {
+	border: 1px solid #555;
+	padding: 3px;
+	margin: 10px;
+}
+
+.box-item {
+	margin: 10px;
+	display: inline-block;
+}
+
+.box-item img {
+	border: 1px solid #333;
+}
+
+.dungeons {
+	clear: both;
+	width: 1000px;
+}
+
+.dungeon-card {
+	float: left;
+	background: #111;
+	display: inline-block;
+	margin: 10px;
+	width: 206px;
+	border: 1px solid #555;
+	padding: 10px;
+	text-align: center;
+}
+
+.dungeon-card .icon {
+	width: 50%;
+}
+.dungeon-card button {
+	margin: 5px 0;
+	width: 100%;
+	background: #0e0e0e;
+}
+
+button {
+	border: 1px solid #333;
+	background: #111;
+	font-family: 'Baskerville', serif;
+	font-weight: 400;
+	font-size: 1em;
+	color: #eee;
+	padding: 5px 10px;
+}
+
+select {
+	border: 1px solid #333;
+	background: #111;
+	color: #eee;
+	padding: 5px 10px;
+	width: 100%;
+}

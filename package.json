@@ -10,7 +10,8 @@
   "license": "ISC",
   "devDependencies": {
     "circomlib": "^2.0.5",
-    "circomlibjs": "^0.1.7"
+    "circomlibjs": "^0.1.7",
+    "ts-node": "^10.9.1"
   },
   "dependencies": {
     "snarkjs": "^0.4.24"

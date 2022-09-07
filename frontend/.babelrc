@@ -1,0 +1,20 @@
+{
+    "plugins": [
+        [
+            "module-resolver",
+            {
+                "root": ["./src"],
+                "alias": {
+                    "@app": "./src"
+                }
+            }
+        ],
+        [
+            "babel-plugin-styled-components",
+            {
+                "ssr": true
+            }
+        ]
+    ],
+    "presets": ["next/babel", "@babel/typescript"]
+}
