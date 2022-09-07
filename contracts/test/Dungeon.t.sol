@@ -25,10 +25,7 @@ contract DungeonTest is Test {
             address(seeker),
             address(rune),
             address(combatVerifier),
-            hasherAddress,
-            Alignment.LIGHT, // _dungeonAttackAlignment,
-            Alignment.LIGHT, // _dungeonArmourAlignment,
-            Alignment.LIGHT // _dungeonHealthAlignment
+            hasherAddress
         );
     }
 
@@ -43,10 +40,10 @@ contract DungeonTest is Test {
         return addr;
     }
 
-    function setUpSeeker() public returns (uint) {
+    function setUpSeeker(uint8 str) public returns (uint) {
         // mint a seeker
         uint8[8] memory attrs = [
-            1, // str
+            str, // str
             2, // tough
             3, // dex
             4, // speed
@@ -64,14 +61,19 @@ contract DungeonTest is Test {
 
     function testActionEnter() public {
         // mint a seeker
-        uint seekerID = setUpSeeker();
+        uint seekerID = setUpSeeker(2);
         // start the battle
         vm.roll(100);
-        dungeon.resetBattle();
+        dungeon.resetBattle(
+            Alignment.LIGHT,
+            Alignment.LIGHT,
+            Alignment.LIGHT,
+            Alignment.DARK
+        );
         // enter the dungeon
         vm.roll(105);
         dungeon.send(
-            Action.ENTER,
+            ActionKind.ENTER,
             uint8(seekerID),
             0,
             0,
@@ -80,35 +82,28 @@ contract DungeonTest is Test {
         // expect to now have a seeker slotID
         int8 slotID = dungeon.getSeekerSlotID(seekerID);
         assertTrue(slotID != -1, 'expect seeker to have a slot');
-        Slot memory slot = dungeon.getSeekerSlot(uint8(slotID));
-        // expect the action to be added to slot
-        assertEq(slot.actions.length, 1, 'expect one action in the slot');
-        // expect correct action logged
-        (Action action0, uint8[7] memory args) = dungeon.decodeAction(slot.actions[0]);
-        assertEq(uint(action0), uint(Action.ENTER), 'should be ENTER action');
-        // expect the attack values to be based on seeker stats
-        SeekerData memory data = seeker.getData(seekerID);
-        assertEq(args[0], 5, 'should be 5 ticks since battle start');
-        assertEq(args[1], data.strength, 'should be base strength from seeker');
-        assertEq(args[2], data.strength, 'should be base strength from seeker');
-        assertEq(args[3], dungeon.dungeonStrength(), 'should be base strength from dungeon');
-        assertEq(args[4], dungeon.dungeonStrength(), 'should be base strength from dungeon');
+        uint slotHash = dungeon.getSeekerSlotHash(uint8(slotID));
         // expect hash to be set
-        assertTrue(slot.hash != 0, 'should have computed hash of actions');
+        assertTrue(slotHash != 0, 'should have computed hash of actions');
     }
 
-    function testProof() public {
+    function testClaimRune() public {
         // roll forward to a larger block num and start battle
         uint blk = 13773000;
         vm.roll(blk);
-        dungeon.resetBattle();
-        // add seekers to all slots (replicating what generate_input.js does)
+        dungeon.resetBattle(
+            Alignment.LIGHT,
+            Alignment.LIGHT,
+            Alignment.LIGHT,
+            Alignment.DARK
+        );
+        // add seekers to all but one slots (replicating what generate_input.js does)
         vm.roll(++blk);
         uint seekerID;
         for (uint s=0; s<NUM_SEEKERS-1; s++) {
-            seekerID = setUpSeeker();
+            seekerID = setUpSeeker(1);
             dungeon.send(
-                Action.ENTER,
+                ActionKind.ENTER,
                 uint8(seekerID),
                 0,
                 0,
@@ -116,12 +111,11 @@ contract DungeonTest is Test {
             );
         }
 
-        // pick slot (same as set in generate_input.js)
-        int8 slotID = 0;
-
         // emulate someone passing in a proof...
         // see Makefile for where these environment variables are set
         // the come from executing the proover from the command line
+        blk += 100;
+        vm.roll(++blk);
         uint256[] memory inputs = vm.envUint("PROOF_INPUTS", ",");
         uint256[] memory pi_a = vm.envUint("PROOF_PI_A", ",");
         uint256[] memory pi_b_0 = vm.envUint("PROOF_PI_B_0", ",");
@@ -132,18 +126,17 @@ contract DungeonTest is Test {
             dungeonHealth: inputs[1],
             seekerArmour: inputs[2],
             seekerHealth: inputs[3],
-            seekerSlot: uint256(uint8(slotID))
-        });
-        CombatProof memory proof = CombatProof({
-            a: [pi_a[0], pi_a[1]],
-            b: [
+            slot: 0,
+            tick: 99,
+            pi_a: [pi_a[0], pi_a[1]],
+            pi_b: [
                [pi_b_0[1], pi_b_0[0]],
                [pi_b_1[1], pi_b_1[0]]
             ],
-            c: [pi_c[0], pi_c[1]]
+            pi_c: [pi_c[0], pi_c[1]]
         });
 
-        assertTrue(dungeon.verifyState(state, proof), 'expected proof to be legit');
+        dungeon.claimRune(state);
 
     }
 

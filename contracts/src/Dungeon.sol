@@ -12,7 +12,10 @@ interface IPoseidonHasher {
     function poseidon(uint256[6] memory inp) external pure returns (uint256 out);
 }
 
-enum Action {
+uint constant NUM_SEEKERS = 3;
+uint constant NUM_TICKS = 100;
+
+enum ActionKind {
     ENTER,
     EQUIP,
     DRINK,
@@ -22,13 +25,6 @@ enum Action {
 struct Slot {
     uint seekerID;
     uint hash;
-    uint[] actions;
-}
-
-struct CombatProof {
-    uint[2] a;
-    uint[2][2] b;
-    uint[2] c;
 }
 
 struct CombatState {
@@ -36,13 +32,21 @@ struct CombatState {
     uint dungeonHealth;
     uint seekerArmour;
     uint seekerHealth;
-    uint seekerSlot;
+    uint slot;
+    uint tick;
+    // proofy bits
+    uint[2] pi_a;
+    uint[2][2] pi_b;
+    uint[2] pi_c;
 }
-    uint constant NUM_SEEKERS = 10;
-    uint constant NUM_TICKS = 100;
 
 contract Dungeon {
 
+    event Action (
+        ActionKind kind,
+        uint8 slotID,
+        uint8[7] args
+    );
 
     Seeker seekerContract;
     Rune runeContract;
@@ -53,31 +57,26 @@ contract Dungeon {
     Alignment public dungeonAttackAlignment;
     Alignment public dungeonArmourAlignment;
     Alignment public dungeonHealthAlignment;
-    uint8 public dungeonStrength = 2;
+    Alignment public dungeonRewardRuneAlignment;
+    uint8 public dungeonStrength = 10;
     uint public dungeonBattleStart;
     Slot[NUM_SEEKERS] public slots;
+    bool[NUM_SEEKERS] public claimed;
 
     constructor(
         address _seekerContractAddr,
         address _runeContractAddr,
         address _combatVerifierContractAddr,
-        address _hasherContractAddr,
-        Alignment _dungeonAttackAlignment,
-        Alignment _dungeonArmourAlignment,
-        Alignment _dungeonHealthAlignment
+        address _hasherContractAddr
     ) {
         seekerContract = Seeker(_seekerContractAddr);
         runeContract = Rune(_runeContractAddr);
         combatVerifierContract = Verifier(_combatVerifierContractAddr);
         hasher = IPoseidonHasher(_hasherContractAddr);
-        dungeonAttackAlignment = _dungeonAttackAlignment;
-        dungeonArmourAlignment = _dungeonArmourAlignment;
-        dungeonHealthAlignment = _dungeonHealthAlignment;
-        resetBattle();
     }
 
-    function verifyState(CombatState memory state, CombatProof memory proof) public view returns (bool) {
-        uint[NUM_SEEKERS+5] memory input;
+    function verifyState(CombatState memory state) public view returns (bool) {
+        uint[NUM_SEEKERS+6] memory input; // 1x hash per seeker + selectedTick + selectedSeeker + 2x dungeon healths + 2x seeker healths
         uint i = 0;
         input[i] = state.dungeonArmour;
         i++;
@@ -91,31 +90,44 @@ contract Dungeon {
             input[i] = slots[s].hash;
             i++;
         }
-        input[i] = state.seekerSlot;
+        input[i] = state.slot;
         i++;
-        return combatVerifierContract.verifyProof(proof.a, proof.b, proof.c, input);
+        input[i] = state.tick;
+        i++;
+        return combatVerifierContract.verifyProof(state.pi_a, state.pi_b, state.pi_c, input);
     }
 
-    function claimAttackRune(CombatState memory state, CombatProof memory proof) public view {
+    function claimRune(CombatState memory state) public {
+        // seeker must actually be in the fight
+        // find the seekerID from the given slotID
+        Slot storage slot = slots[state.slot];
+        require(slot.seekerID != 0, 'no seeker in slot');
+        // ensure sender is owner of seeker in slot
+        require(seekerContract.ownerOf(slot.seekerID) == tx.origin, 'not owner of seeker in slot');
+        // check the given tick is in the past
+        require(state.tick <= uint8(block.number - dungeonBattleStart), 'cannot verify the future');
         // check state valid
-        require(verifyState(state, proof), "invalid state");
-        // check state.tick < block.number
-        // check state.dungeonArmour < 50
+        require(verifyState(state), "invalid state");
+        // check state.dungeonArmour damaged enough
+        require(state.dungeonArmour < 30, 'dungeon armour not weak enough to grab rune');
         // check not already claimed
-        // mint rune
+        require(!claimed[state.slot], 'already claimed the rune');
+        // claim and mint rune
+        claimed[state.slot] = true;
+        runeContract.mint(tx.origin, dungeonRewardRuneAlignment);
     }
 
-    function claimReward(CombatState memory state, CombatProof memory proof) public view {
+    function claimReward(CombatState memory state) public view {
         // check state valid
-        require(verifyState(state, proof), "invalid state");
+        require(verifyState(state), "invalid state");
         // check state.tick < block.number
         // check state.dungeonHealth == 0
         // check state.seekerHitpoints > 0
-        // mint prize
+        // TODO: mint prize!
     }
 
     function send(
-        Action action,
+        ActionKind actionKind,
         uint8 seekerID,
         uint8 attackRuneID,
         uint8 armourRuneID,
@@ -124,53 +136,60 @@ contract Dungeon {
         // ensure sender owns seeker
         require(seekerContract.ownerOf(seekerID) == tx.origin, 'not your seeker');
         // ensure state is settled
-        // updateState(state, proof);
         // grab if seeker in a slot
         int8 slotID = getSeekerSlotID(seekerID);
         // perform action
-        if (action == Action.ENTER) {
+        if (actionKind == ActionKind.ENTER) {
             // abort if seeker already in dungeon
             require(slotID == -1, "already in dungeon");
             // find a free seeker slot
             slotID = getFreeSlotID();
             require(slotID != -1, "dungeon is full");
-            //
             // now that the state is settled, we can mess with the fight config...
             setSeekerSlot(
-                action,
+                actionKind,
                 uint8(slotID),
                 seekerID,
                 attackRuneID,
                 armourRuneID,
                 healthRuneID
             );
-        } else if(action == Action.LEAVE) {
+        } else if(actionKind == ActionKind.LEAVE) {
             // abort if seeker not in dungeon
             require(slotID > -1, "not in dungeon");
             // abort for now
             revert('not implemented');
             // empty slot
             // clearSeekerSlot(uint8(slot));
-        } else if(action == Action.EQUIP) {
+        } else if(actionKind == ActionKind.EQUIP) {
             // abort if seeker not in dungeon
             require(slotID > -1, "not in dungeon");
             // update slot data
             setSeekerSlot(
-                action,
+                actionKind,
                 uint8(slotID),
                 seekerID,
                 attackRuneID,
                 armourRuneID,
                 healthRuneID
             );
-        } else if(action == Action.DRINK) {
+        } else if(actionKind == ActionKind.DRINK) {
             // TODO
             revert('not implemented');
         }
     }
 
-    function resetBattle() public {
+    function resetBattle(
+        Alignment _dungeonAttackAlignment,
+        Alignment _dungeonArmourAlignment,
+        Alignment _dungeonHealthAlignment,
+        Alignment _dungeonRewardRuneAlignment
+    ) public {
         dungeonBattleStart = block.number;
+        dungeonAttackAlignment = _dungeonAttackAlignment;
+        dungeonArmourAlignment = _dungeonArmourAlignment;
+        dungeonHealthAlignment = _dungeonHealthAlignment;
+        dungeonRewardRuneAlignment = _dungeonRewardRuneAlignment;
         for (uint8 i=0; i<NUM_SEEKERS; i++) {
             clearSeekerSlot(i);
         }
@@ -181,17 +200,22 @@ contract Dungeon {
     ) private {
         slots[slotID].seekerID = 0;
         slots[slotID].hash = 0;
-        slots[slotID].actions = new uint[](0);
     }
 
     function getSeekerSlot(
         uint8 slotID
-    ) public view returns (Slot memory) {
+    ) private view returns (Slot storage) {
         return slots[slotID];
     }
 
+    function getSeekerSlotHash(
+        uint8 slotID
+    ) public view returns (uint) {
+        return slots[slotID].hash;
+    }
+
     function setSeekerSlot(
-        Action action,
+        ActionKind actionKind,
         uint8 slotID,
         uint8 seekerID,
         uint8 attackRuneID,
@@ -205,12 +229,12 @@ contract Dungeon {
         Alignment seekerArmourAlignment = getVerifiedRuneAlignment(armourRuneID);
         Alignment seekerHealthAlignment = getVerifiedRuneAlignment(healthRuneID);
         // calc and update the attack stats including rune mods
-        appendAction(action, slotID, [
+        commitAction(actionKind, slotID, [
             uint8(block.number - dungeonBattleStart), // TODO: overflow likely
-            uint8(data.strength + alignmentBonus(seekerAttackAlignment, dungeonArmourAlignment)),
-            uint8(data.strength + alignmentBonus(seekerAttackAlignment, dungeonHealthAlignment)),
             uint8(dungeonStrength + alignmentBonus(dungeonAttackAlignment, seekerArmourAlignment)),
             uint8(dungeonStrength + alignmentBonus(dungeonAttackAlignment, seekerHealthAlignment)),
+            uint8(data.strength + alignmentBonus(seekerAttackAlignment, dungeonArmourAlignment)),
+            uint8(data.strength + alignmentBonus(seekerAttackAlignment, dungeonHealthAlignment)),
             0,
             0
         ]);
@@ -222,6 +246,8 @@ contract Dungeon {
 
     // getVerifiedRuneAlignment checks that the sender owns the runes and
     // returns the alignment of that rune type
+    // [!] TODO: we don't check people aren't using same rune multiple times
+    //     let's just call that a feature for now
     function getVerifiedRuneAlignment(uint8 runeTypeID) public view returns (Alignment) {
         if (runeTypeID == 0) {
             return Alignment.NONE;
@@ -239,30 +265,40 @@ contract Dungeon {
                 return 3;
             } else if (targetAlignment == Alignment.ARCANE) {
                 return 2;
+            } else {
+                return 1;
             }
         } else if (sourceAlignment == Alignment.DARK) {
             if (targetAlignment == Alignment.ORDER) {
                 return 2;
             } else if (targetAlignment == Alignment.ARCANE) {
                 return 3;
+            } else {
+                return 1;
             }
         } else if (sourceAlignment == Alignment.ORDER) {
             if (targetAlignment == Alignment.LIGHT) {
                 return 2;
             } else if (targetAlignment == Alignment.CHAOS) {
                 return 3;
+            } else {
+                return 1;
             }
         } else if (sourceAlignment == Alignment.CHAOS) {
             if (targetAlignment == Alignment.LIGHT) {
                 return 3;
             } else if (targetAlignment == Alignment.DARK) {
                 return 2;
+            } else {
+                return 1;
             }
         } else if (sourceAlignment == Alignment.ARCANE) {
             if (targetAlignment == Alignment.ORDER) {
                 return 3;
             } else if (targetAlignment == Alignment.CHAOS) {
                 return 2;
+            } else {
+                return 1;
             }
         }
         return 0;
@@ -289,15 +325,10 @@ contract Dungeon {
         return -1;
     }
 
-    // adds logs of the action to a list of all actions
-    // [!]: very gas expensive!
-    //      there is a potentially large gas saving if we:
-    //        1) relied on tx calldata for storage of actions
-    //        2) calc this hash off-chain and verify the transition with a proof
-    function appendAction(Action action, uint slotID, uint8[7] memory args) public {
-        // store the action data
-        // TODO: move off chain
-        slots[slotID].actions.push( encodeAction(action, args) );
+    // commitAction logs the user intent.
+    // update the hash of the seeker/slot actions on-chain
+    // log the action data to allow clients to rebuild it
+    function commitAction(ActionKind actionKind, uint8 slotID, uint8[7] memory args) public {
         // update the hash
         slots[slotID].hash = hasher.poseidon([
             slots[slotID].hash,
@@ -307,73 +338,12 @@ contract Dungeon {
             args[4],
             args[0] // tick
         ]);
-        console2.log('hash', slotID, uint(slots[slotID].hash), uint(args[0]));
-        console2.log('hash', slotID, uint(slots[slotID].hash), uint(args[1]));
-        console2.log('hash', slotID, uint(slots[slotID].hash), uint(args[2]));
-        console2.log('hash', slotID, uint(slots[slotID].hash), uint(args[3]));
-        console2.log('hash', slotID, uint(slots[slotID].hash), uint(args[4]));
-        console2.log('----');
+        // log the action data
+        emit Action(
+            actionKind,
+            slotID,
+            args
+        );
     }
 
-    // function calcSlotHash(uint slotID) private view returns (uint256){
-    //     Slot storage slot = slots[slotID];
-
-
-    //     uint inputValuesHash = 0;
-    //     Action action;
-    //     uint8[7] memory args;
-
-    //     uint8 t = uint8(NUM_TICKS);
-    //     uint8 untilTick;
-    //     uint8 dungeonAttackArmour;
-    //     uint8 dungeonAttackHealth;
-    //     uint8 seekerAttackArmour;
-    //     uint8 seekerAttackHealth;
-    //     for (uint i=slot.actions.length; i>0; i--) {
-    //         (action, args) = decodeAction(slot.actions[i-1]);
-    //         if (action == Action.ENTER || action == Action.EQUIP) {
-    //             untilTick = i==1 ? 0 : args[0];
-    //             dungeonAttackArmour = args[1];
-    //             dungeonAttackHealth = args[2];
-    //             seekerAttackArmour = args[3];
-    //             seekerAttackHealth = args[4];
-    //             while (t >= untilTick+1) {
-    //                 inputValuesHash = hasher.poseidon([
-    //                     inputValuesHash,
-    //                     dungeonAttackArmour,
-    //                     dungeonAttackHealth,
-    //                     seekerAttackArmour,
-    //                     seekerAttackHealth
-    //                 ]);
-    //                 t--;
-    //             }
-    //         }
-    //     }
-    //     return inputValuesHash;
-    // }
-
-    // pack an action and associated args into a single uint256
-    function encodeAction(Action action, uint8[7] memory args) public pure returns (uint256) {
-        return uint256(action)
-        | (uint256(action) << 8)
-        | (uint256(args[0]) << 21)
-        | (uint256(args[1]) << 34)
-        | (uint256(args[2]) << 47)
-        | (uint256(args[3]) << 60)
-        | (uint256(args[4]) << 73)
-        | (uint256(args[5]) << 86)
-        | (uint256(args[6]) << 99);
-    }
-
-    // decodeAction unpacks an action and args encoded by encodeAction()
-    function decodeAction(uint256 packed) public pure returns (Action action, uint8[7] memory args) {
-        action = Action(uint8((packed >> 8) & 0x1fff));
-        args[0] = uint8((packed >> 21) & 0x1fff);
-        args[1] = uint8((packed >> 34) & 0x1fff);
-        args[2] = uint8((packed >> 47) & 0x1fff);
-        args[3] = uint8((packed >> 60) & 0x1fff);
-        args[4] = uint8((packed >> 73) & 0x1fff);
-        args[5] = uint8((packed >> 86) & 0x1fff);
-        args[6] = uint8((packed >> 99) & 0x1fff);
-    }
 }

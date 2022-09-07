@@ -22,12 +22,16 @@ make verify
 * [ ] regen health every block % vitality
 * [ ] seeker only attack every block % dexterity
 
-* [ ] 721 seeker contract with attrs + test mint
+* [x] 721 seeker contract with attrs + test mint
 * [ ] 1155 rune contract + test mint
 * [ ] dungeon contract
-	* [ ] init with 3x run types, hitpoints, 5x empty seeker slots
-	* [ ] enterDungeon(runeIDs) - append seeker info + hash
+	* [x] init with 3x run types, hitpoints, 5x empty seeker slots
+	* [x] enterDungeon(runeIDs) - append seeker info + hash
 	* [ ] claimRune(level, proof) - proof that level reached
 	* [ ] useHealth() - buy a potion to restore health
 	* [ ] leaveDungeon()
 	* [ ] claimReward(proof) - proof that dungeon health==0
+
+
+* [ ] emit event on appendAction
+* [ ]

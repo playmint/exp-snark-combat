@@ -49,6 +49,37 @@ template Select(n) {
 }
 
 // same as Select, but each input is an array of X signals
+// idx[0] selects the 1st dim
+// idx[1] selects the 2nd dim
+template Select2(n, x) {
+	signal input in[n][x];
+	signal input idx[2];
+	signal output out;
+	component sel = Select(x);
+	component iseq[n];
+	component sm[x];
+
+	for (var j=0; j<x; j++) {
+		sm[j] = Sum(n);
+	}
+
+	for (var i=0; i<n; i++) {
+		iseq[i] = IsEqual();
+		iseq[i].in[0] <== i;
+		iseq[i].in[1] <== idx[0];
+		for (var j=0; j<x; j++) {
+			sm[j].in[i] <== (iseq[i].out * in[i][j]);
+		}
+	}
+
+	for (var j=0; j<x; j++) {
+		sel.in[j] <== sm[j].out;
+	}
+	sel.idx <== idx[1];
+	out <== sel.out;
+}
+
+// same as Select but output is an array of X signals
 template SelectArray(n, x) {
 	signal input in[n][x];
 	signal input idx;
@@ -72,81 +103,6 @@ template SelectArray(n, x) {
 	for (var j=0; j<x; j++) {
 		out[j] <== sm[j].out;
 	}
-}
-
-template TickHadNoEffect(numSeekers) {
-    signal input prevDungeonArmour;
-    signal input prevDungeonHealth;
-    signal input prevSeekerArmour[numSeekers];
-    signal input prevSeekerHealth[numSeekers];
-
-    signal input nextDungeonArmour;
-    signal input nextDungeonHealth;
-    signal input nextSeekerArmour[numSeekers];
-    signal input nextSeekerHealth[numSeekers];
-
-	signal output out;
-
-	component pairs[2+(numSeekers*2)];
-	component all = MultiAND(2+(numSeekers*2));
-
-	for (var i=0; i<(2+(numSeekers*2)); i++) {
-		pairs[i] = IsEqual();
-	}
-
-	pairs[0].in[0] <== prevDungeonArmour;
-	pairs[0].in[1] <== nextDungeonArmour;
-
-	pairs[1].in[0] <== prevDungeonHealth;
-	pairs[1].in[1] <== nextDungeonHealth;
-
-	for(var i=0; i<numSeekers; i++){
-		pairs[(i*2)+2].in[0] <== prevSeekerArmour[i];
-		pairs[(i*2)+2].in[1] <== nextSeekerArmour[i];
-
-		pairs[(i*2)+3].in[0] <== prevSeekerHealth[i];
-		pairs[(i*2)+3].in[1] <== nextSeekerHealth[i];
-	}
-
-	for(var i=0; i<(2+(numSeekers*2)); i++){
-		all.in[i] <== pairs[i].out;
-	}
-
-	out <== all.out;
-}
-
-template TicksHadNoEffect(n, numSeekers) {
-    signal input prevDungeonArmour[n];
-    signal input prevDungeonHealth[n];
-    signal input prevSeekerArmour[n][numSeekers];
-    signal input prevSeekerHealth[n][numSeekers];
-
-    signal input nextDungeonArmour[n];
-    signal input nextDungeonHealth[n];
-    signal input nextSeekerArmour[n][numSeekers];
-    signal input nextSeekerHealth[n][numSeekers];
-
-	signal output out;
-
-	component noeff[n];
-	component all = MultiAND(n);
-
-	for (var t=0; t<n; t++) {
-		noeff[t] = TickHadNoEffect(numSeekers);
-		noeff[t].prevDungeonArmour <== prevDungeonArmour[t];
-		noeff[t].nextDungeonArmour <== nextDungeonHealth[t];
-		noeff[t].prevDungeonHealth <== prevDungeonHealth[t];
-		noeff[t].nextDungeonHealth <== nextDungeonHealth[t];
-		for(var i=0; i<numSeekers; i++){
-			noeff[t].prevSeekerArmour[i] <== prevSeekerArmour[t][i];
-			noeff[t].nextSeekerArmour[i] <== nextSeekerArmour[t][i];
-			noeff[t].prevSeekerHealth[i] <== prevSeekerHealth[t][i];
-			noeff[t].nextSeekerHealth[i] <== nextSeekerHealth[t][i];
-		}
-		all.in[t] <== noeff[t].out;
-	}
-
-	out <== all.out;
 }
 
 // subtract b from a, but prevent going below zero
@@ -180,8 +136,8 @@ template Tick(numSeekers) {
     signal output nextSeekerArmour[numSeekers];
     signal output nextSeekerHealth[numSeekers];
 
-	component nextDungeonArmourSub = ClampedSub(8);
-	component nextDungeonHealthSub = ClampedSub(8);
+	component nextDungeonArmourSub = ClampedSub(16);
+	component nextDungeonHealthSub = ClampedSub(16);
 	component nextSeekerArmourSub[numSeekers];
 	component nextSeekerHealthSub[numSeekers];
 
@@ -218,6 +174,7 @@ template Tick(numSeekers) {
 		seekerHealthOkAndDungeonArmourFail[i].a <== seekerHealthOk[i].out;
 		seekerHealthOkAndDungeonArmourFail[i].b <== dungeonArmourFail.out;
 
+		// TODO: add back these bits
 		// TODO: only attack every block % dex == 0
 		// TODO: health regen every block % vitality ?
 
@@ -321,7 +278,7 @@ template SelectAction(n, numOutputs) {
 	}
 }
 
-template Combat2(numSeekers, numTicks, numActions) {
+template Combat(numSeekers, numTicks) {
 	signal input dungeonAttackArmour[numTicks][numSeekers];
 	signal input dungeonAttackHealth[numTicks][numSeekers];
 	signal input seekerAttackArmour[numTicks][numSeekers];
@@ -329,9 +286,12 @@ template Combat2(numSeekers, numTicks, numActions) {
 	signal input seekerValuesHash[numSeekers];
 	signal input seekerValuesUpdated[numTicks][numSeekers];
 
-	// seekerSlot indicates which seeker data
+	// currentSeeker indicates which seeker data
 	// we will be building a proof for
-	signal input seekerSlot;
+	signal input currentSeeker;
+
+	// currentTick indicates which tick we are outputting health values for
+	signal input currentTick;
 
 	signal output dungeonArmourFinal;
 	signal output dungeonHealthFinal;
@@ -403,171 +363,37 @@ template Combat2(numSeekers, numTicks, numActions) {
 		}
 	}
 
-	// TODO: pick which tick we output the values for
+	// pick which tick we output the values for
+	component selectedDungeonArmourTick = Select(numTicks);
+	component selectedDungeonHealthTick = Select(numTicks);
+	component selectedSeekerArmourTick = Select2(numTicks, numSeekers);
+	component selectedSeekerHealthTick = Select2(numTicks, numSeekers);
+	for(var i=0; i<numTicks; i++){
+		selectedDungeonArmourTick.in[i] <== tick[i].nextDungeonArmour;
+		selectedDungeonHealthTick.in[i] <== tick[i].nextDungeonHealth;
+		for(var j=0; j<numSeekers; j++){
+			selectedSeekerArmourTick.in[i][j] <== tick[i].nextSeekerArmour[j];
+			selectedSeekerHealthTick.in[i][j] <== tick[i].nextSeekerHealth[j];
+		}
+	}
+	selectedDungeonArmourTick.idx <== currentTick;
+	selectedDungeonHealthTick.idx <== currentTick;
+	selectedSeekerArmourTick.idx[0] <== currentTick;
+	selectedSeekerArmourTick.idx[1] <== currentSeeker;
+	selectedSeekerHealthTick.idx[0] <== currentTick;
+	selectedSeekerHealthTick.idx[1] <== currentSeeker;
 
 	// output dungeon healths
-	dungeonHealthFinal <== tick[numTicks-1].nextDungeonHealth;
-	dungeonArmourFinal <== tick[numTicks-1].nextDungeonArmour;
-
-	// output seeker healths for $seekerSlot
-	component selectedSeekerArmour = Select(numSeekers);
-	component selectedSeekerHealth = Select(numSeekers);
-	for(var i=0; i<numSeekers; i++){
-		selectedSeekerArmour.in[i] <== tick[numTicks-1].nextSeekerArmour[i];
-		selectedSeekerHealth.in[i] <== tick[numTicks-1].nextSeekerHealth[i];
-	}
-	selectedSeekerArmour.idx <== seekerSlot;
-	selectedSeekerHealth.idx <== seekerSlot;
-	seekerArmourFinal <== selectedSeekerArmour.out;
-	seekerHealthFinal <== selectedSeekerHealth.out;
+	dungeonHealthFinal <== selectedDungeonHealthTick.out;
+	dungeonArmourFinal <== selectedDungeonArmourTick.out;
+	seekerArmourFinal <== selectedSeekerArmourTick.out;
+	seekerHealthFinal <== selectedSeekerHealthTick.out;
 }
-
-template Combat(numSeekers, numTicks) {
-
-	/* signal input selectedTick; */
-
-	// public starting health value hash
-	/* signal input hashIn; */
-
-	// private state values
-	signal input dungeonArmourIn;
-	signal input dungeonHealthIn;
-	signal input seekerHealthIn[numSeekers];
-	signal input seekerArmourIn[numSeekers];
-    signal input seekerAttackArmour[numSeekers];
-    signal input seekerAttackHealth[numSeekers];
-    signal input dungeonAttackArmour[numSeekers];
-    signal input dungeonAttackHealth[numSeekers];
-
-	// public ending state values
-	signal output dungeonArmourOut[numTicks];
-	signal output dungeonHealthOut[numTicks];
-	signal output seekerHealthOut[numTicks][numSeekers];
-	signal output seekerArmourOut[numTicks][numSeekers];
-	/* signal output hashOut[numTicks]; */
-	signal output steadyState;
-
-	// verify that the input values hash matches the input values
-	/* component inputValuesHash = CombatStateHash(numSeekers); */
-	/* inputValuesHash.dungeonArmour <== dungeonArmourIn; */
-	/* inputValuesHash.dungeonHealth <== dungeonHealthIn; */
-	/* for(var i=0; i<numSeekers; i++){ */
-	/* 	inputValuesHash.seekerArmour[i] <== seekerArmourIn[i]; */
-	/* 	inputValuesHash.seekerHealth[i] <== seekerHealthIn[i]; */
-	/* } */
-	/* hashIn === inputValuesHash.out; */
-
-
-	component tick[numTicks];
-
-	/* component selectedDungeonArmour = Select(numTicks); */
-	/* component selectedDungeonHealth = Select(numTicks); */
-	/* component selectedSeekerArmour = SelectArray(numTicks, numSeekers); */
-	/* component selectedSeekerHealth = SelectArray(numTicks, numSeekers); */
-
-	// wireup t=0 (transition between current healths -> first tick)
-	tick[0] = Tick(numSeekers);
-	dungeonArmourIn ==> tick[0].prevDungeonArmour;
-	dungeonHealthIn ==> tick[0].prevDungeonHealth;
-	for(var i=0; i<numSeekers; i++){
-		seekerAttackArmour[i] ==> tick[0].seekerAttackArmour[i];
-		seekerAttackHealth[i] ==> tick[0].seekerAttackHealth[i];
-		dungeonAttackArmour[i] ==> tick[0].dungeonAttackArmour[i];
-		dungeonAttackHealth[i] ==> tick[0].dungeonAttackHealth[i];
-		seekerArmourIn[i] ==> tick[0].prevSeekerArmour[i];
-		seekerHealthIn[i] ==> tick[0].prevSeekerHealth[i];
-	}
-
-	// wireup t=1+ (transitions between ticks)
-	for(var t=1; t<numTicks; t++){
-		tick[t] = Tick(numSeekers);
-		tick[t-1].nextDungeonArmour ==> tick[t].prevDungeonArmour;
-		tick[t-1].nextDungeonHealth ==> tick[t].prevDungeonHealth;
-		for(var i=0; i<numSeekers; i++){
-			seekerAttackArmour[i] ==> tick[t].seekerAttackArmour[i];
-			seekerAttackHealth[i] ==> tick[t].seekerAttackHealth[i];
-			dungeonAttackArmour[i] ==> tick[t].dungeonAttackArmour[i];
-			dungeonAttackHealth[i] ==> tick[t].dungeonAttackHealth[i];
-			tick[t-1].nextSeekerArmour[i] ==> tick[t].prevSeekerArmour[i];
-			tick[t-1].nextSeekerHealth[i] ==> tick[t].prevSeekerHealth[i];
-		}
-	}
-
-	// expose the selected tick's health values as public output signals
-	/* selectedDungeonArmour.idx <== selectedTick; */
-	/* selectedDungeonHealth.idx <== selectedTick; */
-	/* selectedSeekerArmour.idx <== selectedTick; */
-	/* selectedSeekerHealth.idx <== selectedTick; */
-	/* for(var t=0; t<numTicks; t++){ */
-	/* 	selectedDungeonArmour.in[t] <== tick[t].nextDungeonArmour; */
-	/* 	selectedDungeonHealth.in[t] <== tick[t].nextDungeonHealth; */
-	/* 	for(var i=0; i<numSeekers; i++){ */
-	/* 		selectedSeekerArmour.in[t][i] <== tick[t].nextSeekerArmour[i]; */
-	/* 		selectedSeekerHealth.in[t][i] <== tick[t].nextSeekerHealth[i]; */
-	/* 	} */
-	/* } */
-	/* dungeonArmourOut <== selectedDungeonArmour.out; */
-	/* dungeonHealthOut <== selectedDungeonHealth.out; */
-	/* component iseq[numSeekers]; */
-	/* component sm = Sum(numSeekers); */
-	/* for(var i=0; i<numSeekers; i++){ */
-	/* 	seekerArmourOut[i] <== selectedSeekerArmour.out[i]; */
-	/* 	seekerHealthOut[i] <== selectedSeekerHealth.out[i]; */
-	/* } */
-
-	// output ALL healths at every tick ARRRG
-	for(var t=0; t<numTicks; t++){
-		dungeonArmourOut[t] <== tick[t].nextDungeonArmour;
-		dungeonHealthOut[t] <== tick[t].nextDungeonHealth;
-		for(var i=0; i<numSeekers; i++){
-			seekerArmourOut[t][i] <== tick[t].nextSeekerArmour[i];
-			seekerHealthOut[t][i] <== tick[t].nextSeekerHealth[i];
-		}
-	}
-
-	// build n verify hash of selected tick's health values as public output
-	/* component outputValuesHash[numTicks]; */
-	/* for(var t=0; t<numTicks; t++){ */
-	/* 	outputValuesHash[t] = CombatStateHash(numSeekers); */
-	/* 	outputValuesHash[t].dungeonArmour <== tick[t].nextDungeonArmour; */
-	/* 	outputValuesHash[t].dungeonHealth <== tick[t].nextDungeonHealth; */
-	/* 	for(var i=0; i<numSeekers; i++){ */
-	/* 		outputValuesHash[t].seekerArmour[i] <== tick[t].nextSeekerArmour[i]; */
-	/* 		outputValuesHash[t].seekerHealth[i] <== tick[t].nextSeekerHealth[i]; */
-	/* 	} */
-	/* 	hashOut[t] <== outputValuesHash[t].out; */
-	/* } */
-
-	// expose if combat has reached an equilibrium
-	// ie. all ticks for any future proofs will have the same values
-	// we can use this fact later to skip over large periods of
-	// inactivity where no changes have occured
-	// ---
-	// combat is considered at equilibrium if all the values are unchanged
-	// over the last N ticks ... where N is the largest dexterity or vitality number
-	// (since those values affect _which_ tick triggers their action for example health
-	// regens on `tick % 3 == 0` so we need to see at least 3 ticks unchanged)
-	component isEquilibrium = TicksHadNoEffect(4, numSeekers);
-	for (var t=0; t<4; t++) {
-		isEquilibrium.prevDungeonArmour[t] <== tick[numTicks-1-t].prevDungeonArmour;
-		isEquilibrium.nextDungeonArmour[t] <== tick[numTicks-1-t].nextDungeonArmour;
-		isEquilibrium.prevDungeonHealth[t] <== tick[numTicks-1-t].prevDungeonHealth;
-		isEquilibrium.nextDungeonHealth[t] <== tick[numTicks-1-t].nextDungeonHealth;
-		for(var i=0; i<numSeekers; i++){
-			isEquilibrium.prevSeekerArmour[t][i] <== tick[numTicks-1-t].prevSeekerArmour[i];
-			isEquilibrium.nextSeekerArmour[t][i] <== tick[numTicks-1-t].nextSeekerArmour[i];
-			isEquilibrium.prevSeekerHealth[t][i] <== tick[numTicks-1-t].prevSeekerHealth[i];
-			isEquilibrium.nextSeekerHealth[t][i] <== tick[numTicks-1-t].nextSeekerHealth[i];
-		}
-	}
-	steadyState <== isEquilibrium.out;
-
-
- }
 
  component main {
 	public [
 		seekerValuesHash,
-		seekerSlot
+		currentSeeker,
+		currentTick
 	]
-} = Combat2(10, 100, 100);
+} = Combat(3, 100);

@@ -43,7 +43,7 @@ verification_key.json: combat_0001.zkey
 combat_0001.zkey: combat_0000.zkey
 	echo 'yyy' | npx snarkjs zkey contribute $< $@ --name="1st Contributor Name" -v
 
-combat_0000.zkey: pot23_final.ptau combat.r1cs
+combat_0000.zkey: pot18_final.ptau combat.r1cs
 	npx snarkjs groth16 setup combat.r1cs $< $@
 
 contracts/src/CombatVerifier.sol: verifier.sol
@@ -75,6 +75,11 @@ pot23_final.ptau:
 # contracts/src/Poseidon.sol: contracts/src/Poseidon.sol.tpl generate_poseidon_contract.js
 # 	sed 's/CONTRACT_BYTES/$(shell node generate_poseidon_contract.js)/' <$< >$@
 
+contracts/typechain-types/src/Alignment.sol:
+	cd contracts && npx typechain \
+		--target ethers-v5 \
+		--out-dir ./typechain-types ./artifacts/contracts/Alignment.sol/Alignment.json
+
 .PHONY: test
 test: input.json proof.json contracts/src/CombatVerifier.sol
 	(cd contracts && \
@@ -86,6 +91,21 @@ test: input.json proof.json contracts/src/CombatVerifier.sol
 		PROOF_PI_B_1=$(shell cat proof.json| jq -r '.pi_b[1] | @csv' | sed 's/"//g') \
 		PROOF_PI_C=$(shell cat proof.json| jq -r '.pi_c | @csv' | sed 's/"//g') \
 		forge test -vvv)
+	(cd contracts && \
+		npx hardhat test --bail)
+
+contracts/broadcast/deploy.s.sol/31337/run-latest.json: contracts/src/CombatVerifier.sol
+	(cd contracts && \
+		POSEIDON_CONTRACT_BYTES=$(shell node generate_poseidon_contract.js) \
+		forge script ./script/deploy.s.sol \
+			--fork-url http://localhost:8545 \
+			--private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+			--broadcast)
+
+.PHONY: deploy
+deploy: contracts/broadcast/deploy.s.sol/31337/run-latest.json
+	echo "$$(jq '.transactions[] | select(.transactionType == "CREATE") | {name: .contractName, address: .contractAddress}' < $<)"
+
 
 .PHONY: clean
 clean:

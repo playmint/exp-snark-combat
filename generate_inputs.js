@@ -1,23 +1,22 @@
 const circom = require('circomlibjs');
 
-const numSeekers = 10;
+const numSeekers = 3;
 const numTicks = 100;
-const numActions = 100;
 
 async function main() {
-    const genAction = (t, str) => ({
+    const genAction = (t, seekerAttack, dungeonAttack) => ({
         name: 'ENTER',
         tick: t,
-        dungeonAttackArmour: str,
-        dungeonAttackHealth: str,
-        seekerAttackArmour: 2,
-        seekerAttackHealth: 2,
+        dungeonAttackArmour: dungeonAttack,
+        dungeonAttackHealth: dungeonAttack,
+        seekerAttackArmour: seekerAttack,
+        seekerAttackHealth: seekerAttack,
     });
 
     // actions
     const slots = Array(numSeekers).fill(null).map(() => []);
     for (let i=0; i<numSeekers-1; i++) {
-        slots[i].push( genAction(1, 9) );
+        slots[i].push( genAction(1, 9, 11) );
     }
 
     // convert actions into expanded list of all inputs at each tick per seeker
@@ -26,7 +25,8 @@ async function main() {
         dungeonAttackHealth: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
         seekerAttackArmour: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
         seekerAttackHealth: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
-        seekerSlot: 0,
+        currentSeeker: 0,
+        currentTick: 99,
         seekerValuesHash: Array(numSeekers).fill(null),
         seekerValuesUpdated: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
     };
