@@ -86,21 +86,17 @@ pot23_final.ptau:
 # pot20_final.ptau: pot_0001.ptau
 # 	snarkjs powersoftau prepare phase2 $< $@ -v
 
-# Junk: does not work as expected
-# contracts/src/MiMC.sol: contracts/src/MiMC.sol.tpl generate_mimc_contract.js
-# 	sed 's/CONTRACT_BYTES/$(shell node generate_mimc_contract.js)/' <$< >$@
-# contracts/src/Poseidon.sol: contracts/src/Poseidon.sol.tpl generate_poseidon_contract.js
-# 	sed 's/CONTRACT_BYTES/$(shell node generate_poseidon_contract.js)/' <$< >$@
-
 contracts/typechain-types/src/Alignment.sol:
 	cd contracts && npx typechain \
 		--target ethers-v5 \
 		--out-dir ./typechain-types ./artifacts/contracts/Alignment.sol/Alignment.json
 
+contracts/node_modules: contracts/package.json
+	(cd contracts && npm install)
+
 .PHONY: test
-test: input.json proof.json contracts/src/CombatVerifier.sol
+test: input.json proof.json contracts/src/CombatVerifier.sol contracts/node_modules
 	(cd contracts && \
-		MIMC_CONTRACT_BYTES=$(shell node generate_mimc_contract.js) \
 		POSEIDON_CONTRACT_BYTES=$(shell node generate_poseidon_contract.js) \
 		PROOF_INPUTS=$(shell cat input.json | jq -r '. | @csv' | sed 's/"//g') \
 		PROOF_PI_A=$(shell cat proof.json| jq -r '.pi_a | @csv' | sed 's/"//g') \
@@ -111,17 +107,10 @@ test: input.json proof.json contracts/src/CombatVerifier.sol
 	(cd contracts && \
 		npx hardhat test --bail)
 
-contracts/broadcast/deploy.s.sol/31337/run-latest.json: contracts/src/CombatVerifier.sol
-	(cd contracts && \
-		POSEIDON_CONTRACT_BYTES=$(shell node generate_poseidon_contract.js) \
-		forge script ./script/deploy.s.sol \
-			--fork-url http://localhost:8545 \
-			--private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
-			--broadcast)
-
 .PHONY: deploy
-deploy: contracts/broadcast/deploy.s.sol/31337/run-latest.json
-	echo "$$(jq '.transactions[] | select(.transactionType == "CREATE") | {name: .contractName, address: .contractAddress}' < $<)"
+deploy: input.json proof.json contracts/src/CombatVerifier.sol contracts/node_modules
+	echo "deploying to localhost.... make sure your have a local anvil or ganache running"
+	cd contracts && HARDHAT_NETWORK=localhost npx -- ts-node --transpileOnly ./scripts/deploy.ts
 
 
 .PHONY: clean
