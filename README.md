@@ -40,8 +40,7 @@ anvil --block-time 10
 Then you can deploy the contracts to it:
 
 ```
-cd contracts
-HARDHAT_NETWORK=localhost npx -- ts-node --transpileOnly ./scripts/deploy.ts
+make deploy
 ```
 
 Then you can start the frontend:
@@ -64,7 +63,7 @@ pattern rather than the combat itself.
 * at the start of a Battle the Dungeon has armour=100 and health=100
 * a Dungeon has an attack, armour, and health Alignment
 * a Seeker has an attack, armour, and health Alignment
-* the alignments between [seeker|dungeon] attack vs [seeker|dungeon] [health|armour] affects the damage inflicted during attack. 
+* the alignments between [seeker|dungeon] attack vs [seeker|dungeon] [health|armour] affects the damage inflicted during attack.
 * Seekers can choose to ENTER a Battle
 * at ENTER the seeker has armour=100 and health=100
 * each Tick the dungeon does some damage to each Seeker's armour (or health if armour == 0).
@@ -87,7 +86,7 @@ sequenceDiagram
     Contract->>Contract: record hash of action on-chain storage
     Contract->>Contract: emit action data in event/log
     Contract->>Player: OK
-    
+
     loop Every tick
         Note left of Player: t=2...N
         Player->>Contract: fetch action data for all seekers from events
@@ -96,7 +95,7 @@ sequenceDiagram
         Player->>Player: execute circuit/prove to compute health values at t=N
         Player->>Player: build the current state to display to user
     end
-    
+
     Note left of Player: t=N
     Player->>Player: check if health values meet criteria to claim Rune
     Player->>Contract: claimRune(HEALTH_STATE, PROOF)
@@ -104,5 +103,5 @@ sequenceDiagram
     Contract->>Contract: verify that the health state meets criteria to claim a rune
     Contract->>Contract: mint Rune for player
     Contract->>Player: OK
-    
+
 ```
