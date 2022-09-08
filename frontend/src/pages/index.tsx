@@ -400,9 +400,6 @@ export const Main = (): JSX.Element => {
                 .catch((err) => console.log('failed to getGameState:', err))
                 .finally(() => setLoading(false));
         });
-        return () => {
-            library.removeEventListeners();
-        };
     }, [library === undefined]);
 
     const seekers: any[] = [1, 2, 3];
@@ -416,6 +413,8 @@ export const Main = (): JSX.Element => {
                 <button className="box-item" onClick={handleResetBattle}>
                     Restart
                 </button>
+                <strong>tick: {gameState.tick} </strong>
+                <strong>{loading ? '(processing)' : ''}</strong>
             </div>
             <div className="dungeons">
                 {seekers.map((seekerID, idx) => (
@@ -424,7 +423,7 @@ export const Main = (): JSX.Element => {
                         <ActionButton
                             seekerID={seekerID}
                             kind={ActionKind.ENTER}
-                            label="Join"
+                            label="Join Battle"
                             attackRuneID={0}
                             armourRuneID={0}
                             healthRuneID={0}
@@ -438,11 +437,15 @@ export const Main = (): JSX.Element => {
                     </div>
                 ))}
             </div>
-            <div className="state" style={{ clear: 'both' }}>
-                <p>loading: {loading ? 'yes' : 'no'}</p>
-                <p>tick: {gameState.tick}</p>
-                <p>dungeonArmour: {gameState.dungeonArmour}</p>
-                <p>dungeonHealth: {gameState.dungeonHealth}</p>
+            <div className="dungeons" style={{ clear: 'both', textAlign: 'center' }}>
+                <h1 style={{ margin: 20, clear: 'both' }}>vs</h1>
+            </div>
+            <div className="dungeons" style={{ clear: 'both' }}>
+                <div className="dungeon-card" style={{ width: '100%' }}>
+                    <h2>Dungeon #1</h2>
+                    <p>dungeonArmour: {gameState.dungeonArmour}</p>
+                    <p>dungeonHealth: {gameState.dungeonHealth}</p>
+                </div>
             </div>
         </div>
     );
