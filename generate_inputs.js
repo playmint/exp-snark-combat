@@ -1,62 +1,55 @@
-const circom = require('circomlibjs');
+const circomlib = require('circomlibjs');
+const { BigNumber, utils } = require('ethers');
 
 const numSeekers = 3;
 const numTicks = 100;
 
 async function main() {
-    const genAction = (t, seekerAttack, dungeonAttack) => ({
-        name: 'ENTER',
+    const genAction = (t, hrv, yldb) => ({
         tick: t,
-        dungeonAttackArmour: dungeonAttack,
-        dungeonAttackHealth: dungeonAttack,
-        seekerAttackArmour: seekerAttack,
-        seekerAttackHealth: seekerAttack,
+        hrv,
+        yldb,
+        end: 100,
+        action: 0, // JOIN
     });
 
-    // actions
-    const slots = Array(numSeekers).fill(null).map(() => []);
+    // actions/slotconfigs
+    const cfgs = Array(numSeekers).fill(null).map(() => []);
     for (let i=0; i<numSeekers-1; i++) {
-        slots[i].push( genAction(1, 9, 11) );
+        cfgs[i].push( genAction(1, 9, 1) );
     }
 
     // convert actions into expanded list of all inputs at each tick per seeker
     const inputs = {
-        dungeonAttackArmour: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
-        dungeonAttackHealth: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
-        seekerAttackArmour: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
-        seekerAttackHealth: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
-        currentSeeker: 0,
-        currentTick: 99,
+        seekerHRV: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
+        seekerYLB: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
+        seekerEND: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
+        seekerACT: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
+        currentTick: 5,
         seekerValuesHash: Array(numSeekers).fill(null),
         seekerValuesUpdated: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
     };
     for (let s=0; s<numSeekers; s++) {
-        const actions = slots[s];
         let inputValuesHash = 0;
-        const poseidon = await circom.buildPoseidon();
+        const poseidon = await circomlib.buildPoseidon();
 
-        for (let a=0; a<actions.length; a++) {
-            const action = actions[a];
+        for (let a=0; a<cfgs[s].length; a++) {
+            const cfg = cfgs[s][a];
             // console.log('seeker', s, action);
-            if (action.name == 'ENTER' || action.name == 'EQUIP') {
-                // console.log('hash bfr', poseidon.F.toString(inputValuesHash));
+            if (cfg.action == 0) { // 0=join
                 const h = [
                     inputValuesHash,
-                    action.dungeonAttackArmour,
-                    action.dungeonAttackHealth,
-                    action.seekerAttackArmour,
-                    action.seekerAttackHealth,
-                    action.tick,
+                    packSlotConfig(cfg)
                 ];
                 inputValuesHash = poseidon(h);
-                inputs.seekerValuesUpdated[action.tick][s] = 1;
+                inputs.seekerValuesUpdated[cfg.tick][s] = 1;
                 // console.log('hash afr', poseidon.F.toString(inputValuesHash), h);
             }
-            for (let t=action.tick; t<numTicks; t++) {
-                inputs.dungeonAttackArmour[t][s] = action.dungeonAttackArmour;
-                inputs.dungeonAttackHealth[t][s] = action.dungeonAttackHealth;
-                inputs.seekerAttackArmour[t][s] = action.seekerAttackArmour;
-                inputs.seekerAttackHealth[t][s] = action.seekerAttackHealth;
+            for (let t=cfg.tick; t<numTicks; t++) {
+                inputs.seekerHRV[t][s] = cfg.hrv;
+                inputs.seekerYLB[t][s] = cfg.yldb;
+                inputs.seekerEND[t][s] = cfg.end;
+                inputs.seekerACT[t][s] = cfg.action;
             }
         }
 
@@ -64,6 +57,15 @@ async function main() {
     }
 
     return inputs;
+}
+
+function packSlotConfig(cfg) {
+    return BigInt(0)
+        | (BigInt(cfg.action) << BigInt(8))
+        | (BigInt(cfg.tick) << BigInt(21))
+        | (BigInt(cfg.hrv) << BigInt(34))
+        | (BigInt(cfg.yldb) << BigInt(47))
+        | (BigInt(cfg.end) << BigInt(60));
 }
 
 main()

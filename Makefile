@@ -1,24 +1,28 @@
 
 # groth16 setup requires lots of ram
 export NODE_OPTIONS="--max-old-space-size=16000"
+export REPORT_GAS="true"
 
-# .PHONY: verify
-# verify: verification_key.json proof.json
-# 	echo "---- inputs + outputs ----"
-# 	jq . < input.json
+.PHONY: verify
+verify: verification_key.json proof.json
+	echo "---- inputs + outputs ----"
+	jq . < input.json
 
 verifier.sol: combat_0001.zkey
-	npx snarkjs zkey export solidityverifier combat_0001.zkey $@
+	npx snarkjs zkey export solidityverifier $< $@
 
-circuits/combatfast.circom: circuits/combat.circom
+verifiernohash.sol: combatnohash_0001.zkey
+	npx snarkjs zkey export solidityverifier $< $@
+
+circuits/combatnohash.circom: circuits/combat.circom
 	sed 's/<==/<--/g' <$< | sed 's/==>/-->/g' > $@
 
-combatfast_js/combatfast.wasm: circuits/combatfast.circom
+combatnohash_js/combatnohash.wasm: circuits/combatnohash.circom
 	rm -rf combat_fast_js
 	circom $< --wasm --sym
 
-combatfast.r1cs: circuits/combatfast.circom
-	rm -f combatfast.r1cs
+combatnohash.r1cs: circuits/combatnohash.circom
+	rm -f combatnohash.r1cs
 	circom $< --r1cs
 
 combat_js/combat.wasm: circuits/combat.circom
@@ -57,14 +61,17 @@ combat_0001.zkey: combat_0000.zkey
 combat_0000.zkey: pot18_final.ptau combat.r1cs
 	npx snarkjs groth16 setup combat.r1cs $< $@
 
-combatfast_0001.zkey: combatfast_0000.zkey
+combatnohash_0001.zkey: combatnohash_0000.zkey
 	echo 'yyy' | npx snarkjs zkey contribute $< $@ --name="1st Contributor Name" -v
 
-combatfast_0000.zkey: pot18_final.ptau combatfast.r1cs
-	npx snarkjs groth16 setup combatfast.r1cs $< $@
+combatnohash_0000.zkey: pot18_final.ptau combatnohash.r1cs
+	npx snarkjs groth16 setup combatnohash.r1cs $< $@
 
 contracts/src/CombatVerifier.sol: verifier.sol
-	sed <$< 's/0.6.11/0.8.11/g' >$@
+	sed <$< 's/\^0.6.11/\^0.8.11/g' >$@
+
+contracts/src/CombatNoHashVerifier.sol: verifiernohash.sol
+	sed <$< 's/\^0.6.11/\^0.8.11/g' >$@
 
 ################
 # download a premade powers of tau suitable for up to 1M constraints
@@ -95,15 +102,15 @@ contracts/node_modules: contracts/package.json
 	(cd contracts && npm install)
 
 .PHONY: test
-test: input.json proof.json contracts/src/CombatVerifier.sol contracts/node_modules
-	(cd contracts && \
-		POSEIDON_CONTRACT_BYTES=$(shell node generate_poseidon_contract.js) \
-		PROOF_INPUTS=$(shell cat input.json | jq -r '. | @csv' | sed 's/"//g') \
-		PROOF_PI_A=$(shell cat proof.json| jq -r '.pi_a | @csv' | sed 's/"//g') \
-		PROOF_PI_B_0=$(shell cat proof.json| jq -r '.pi_b[0] | @csv' | sed 's/"//g') \
-		PROOF_PI_B_1=$(shell cat proof.json| jq -r '.pi_b[1] | @csv' | sed 's/"//g') \
-		PROOF_PI_C=$(shell cat proof.json| jq -r '.pi_c | @csv' | sed 's/"//g') \
-		forge test -vvv)
+test: input.json proof.json contracts/src/CombatVerifier.sol contracts/src/CombatNoHashVerifier.sol combatnohash_js/combatnohash.wasm combatnohash_0001.zkey contracts/node_modules
+	# (cd contracts && \
+	# 	POSEIDON_CONTRACT_BYTES=$(shell node generate_poseidon_contract.js) \
+	# 	PROOF_INPUTS=$(shell cat input.json | jq -r '. | @csv' | sed 's/"//g') \
+	# 	PROOF_PI_A=$(shell cat proof.json| jq -r '.pi_a | @csv' | sed 's/"//g') \
+	# 	PROOF_PI_B_0=$(shell cat proof.json| jq -r '.pi_b[0] | @csv' | sed 's/"//g') \
+	# 	PROOF_PI_B_1=$(shell cat proof.json| jq -r '.pi_b[1] | @csv' | sed 's/"//g') \
+	# 	PROOF_PI_C=$(shell cat proof.json| jq -r '.pi_c | @csv' | sed 's/"//g') \
+	# 	forge test -vvv)
 	(cd contracts && \
 		npx hardhat test --bail)
 

@@ -19,3 +19,9 @@ contracts/out
 contracts/cache
 contracts/cache_hardhat/
 contracts/deployments/
+combatnohash.r1cs
+combatnohash.sym
+combatnohash_0000.zkey
+combatnohash_0001.zkey
+combatnohash_js/
+verifiernohash.sol

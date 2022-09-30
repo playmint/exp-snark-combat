@@ -3,7 +3,7 @@ const circom = require('circomlibjs');
 
 async function main() {
     const SEED = "mimcsponge";
-    const bytes = await circom.poseidonContract.createCode(6);
+    const bytes = await circom.poseidonContract.createCode(2);
     return bytes;
 }
 

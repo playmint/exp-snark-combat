@@ -4,6 +4,7 @@ import fs from 'fs';
 import "@nomicfoundation/hardhat-toolbox";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "@typechain/hardhat";
+import "hardhat-gas-reporter"
 
 
 function getRemappings() {
@@ -44,7 +45,8 @@ const config: HardhatUserConfig = {
     },
     networks: {
         hardhat: {
-            blockGasLimit: 60000000
+            blockGasLimit: 600000000,
+            allowUnlimitedContractSize: true,
         },
         localhost: {
             url: "http://127.0.0.1:8545",
@@ -56,6 +58,15 @@ const config: HardhatUserConfig = {
     },
     mocha: {
         bail: true
+    },
+    gasReporter: {
+        enabled: (process.env.REPORT_GAS) ? true : false,
+        currency: 'USD',
+        token: 'MATIC',
+        gasPrice: 60,
+        gasPriceApi: 'https://api.polygonscan.com/api?module=proxy&action=eth_gasPrice',
+        showTimeSpent: true,
+        coinmarketcap: "07e102d0-c19f-4656-b25a-5604dcb89848" // coincap API key not very sensitive, mainly for rate limit
     }
 };
 

@@ -4,7 +4,7 @@ import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { Contract, ContractFactory } from "ethers";
 import { TransactionResponse } from "@ethersproject/abstract-provider";
 import { simpleVarCheckValue, mapVarCheckValue } from "./common";
-import { Dungeon, Seeker, Rune, Verifier } from "../typechain-types";
+import { Session, Seeker, Rune, Verifier } from "../typechain-types";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import * as circomlib from "circomlibjs";
 
@@ -17,8 +17,8 @@ export async function deployContracts(deployment: Deployment) {
     const [signer] = await deployment.hre.ethers.getSigners();
 
     const poseidonContractFactory = new ContractFactory(
-        circomlib.poseidonContract.generateABI(6),
-        circomlib.poseidonContract.createCode(6),
+        circomlib.poseidonContract.generateABI(2),
+        circomlib.poseidonContract.createCode(2),
         signer
     );
     const poseidonContract = await poseidonContractFactory.deploy();
@@ -32,38 +32,38 @@ export async function deployContracts(deployment: Deployment) {
 
     await seekerContract.setMaxSupply(1, 500);
 
-    const runeContractArgs:any[] = [];
-    const runeContract = await deployment.deploy( {
-        id: "rune",
-        contract: "src/Rune.sol:Rune",
-        autoUpdate: true,
-    }, ...runeContractArgs) as Rune;
-
-    const verifierContractArgs:any[] = [];
-    const verifierContract = await deployment.deploy( {
+    const verifierWithHashContractArgs:any[] = [];
+    const verifierWithHashContract = await deployment.deploy( {
         id: "rune",
         contract: "src/CombatVerifier.sol:Verifier",
         autoUpdate: true,
-    }, ...verifierContractArgs) as Verifier;
+    }, ...verifierWithHashContractArgs) as Verifier;
+
+    const verifierNoHashContractArgs:any[] = [];
+    const verifierNoHashContract = await deployment.deploy( {
+        id: "rune",
+        contract: "src/CombatNoHashVerifier.sol:Verifier",
+        autoUpdate: true,
+    }, ...verifierNoHashContractArgs) as Verifier;
 
     const dungeonContractArgs:any[] = [
         seekerContract.address,
-        runeContract.address,
-        verifierContract.address,
+        verifierWithHashContract.address,
+        verifierNoHashContract.address,
         poseidonContract.address,
     ];
-    const dungeonContract = await deployment.deploy( {
-        id: "dungeon",
-        contract: "src/Dungeon.sol:Dungeon",
+    const sessionContract = await deployment.deploy( {
+        id: "session",
+        contract: "src/Session.sol:Session",
         autoUpdate: true,
-    }, ...dungeonContractArgs) as Dungeon;
+    }, ...dungeonContractArgs) as Session;
 
     return {
         poseidonContract,
         seekerContract,
-        runeContract,
-        verifierContract,
-        dungeonContract,
+        verifierWithHashContract,
+        verifierNoHashContract,
+        sessionContract,
     }
 
 };

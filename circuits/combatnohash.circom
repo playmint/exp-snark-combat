@@ -4,7 +4,10 @@ include "templates.circom";
 
 component main {
 	public [
-		seekerValuesHash,
+		seekerHRV,
+		seekerYLB,
+		seekerEND,
+		seekerACT,
 		currentTick
 	]
-} = Combat(3, 100);
+} = CombatNoHash(3, 100);

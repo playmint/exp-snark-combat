@@ -54,7 +54,6 @@ contract Seeker is ERC721Enumerable, Ownable {
         require(_totalMinted[generation] < _maxMintable[generation], "tokenId out of range for genesis");
         tokenId = _count + 1;
         _totalMinted[generation]++;
-        attrs[7] = newWeightedCorruption(random(tokenId));
         _attrs[tokenId] = packAttrs(attrs);
         _safeMint(to, tokenId);
         _count++;
@@ -93,6 +92,10 @@ contract Seeker is ERC721Enumerable, Ownable {
         attrs[5] = uint8((packed >> 73) & 0x1fff);
         attrs[6] = uint8((packed >> 86) & 0x1fff);
         attrs[7] = uint8((packed >> 99) & 0x1fff);
+    }
+
+    function getAttrs(uint256 tokenId) public view returns (uint8[8] memory) {
+        return unpackAttrs(_attrs[tokenId]);
     }
 
     function getData(uint256 tokenId) public view returns (SeekerData memory data) {
