@@ -7,6 +7,12 @@ import "./Seeker.sol";
 
 import "forge-std/console2.sol"; // FIXME: remove
 
+uint constant NUM_SEEKERS = 3; // CONFIG:NUM_SEEKERS
+uint constant NUM_TICKS = 100; // CONFIG:NUM_TICKS
+
+uint constant VERIFIER_NOHASH_INPUTS = (NUM_SEEKERS)+(4*NUM_SEEKERS*NUM_TICKS)+1;
+uint constant VERIFIER_WITHHASH_INPUTS = (NUM_SEEKERS*2)+1;
+
 interface IPoseidonHasher {
     function poseidon(uint256[2] memory inp) external pure returns (uint256 out);
 }
@@ -16,7 +22,7 @@ interface IVerifierNoHash {
         uint[2] memory a,
         uint[2][2] memory b,
         uint[2] memory c,
-        uint[1204] memory input
+        uint[VERIFIER_NOHASH_INPUTS] memory input
     ) external view returns (bool r);
 }
 
@@ -25,12 +31,9 @@ interface IVerifierWithHash {
         uint[2] memory a,
         uint[2][2] memory b,
         uint[2] memory c,
-        uint[7] memory input
+        uint[VERIFIER_WITHHASH_INPUTS] memory input
     ) external view returns (bool r);
 }
-
-uint constant NUM_SEEKERS = 3;
-uint constant NUM_TICKS = 100;
 
 enum ActionKind {
     JOIN,
@@ -127,7 +130,7 @@ contract Session {
     }
 
     // FIXME: just hardcoding some "random" numbers for now
-    uint[NUM_TICKS] rand = [75,98,98,35,97,20,21,34,22,98,64,2,63,11,3,80,86,12,50,99,16,78,19,88,72,7,86,28,41,72,10,86,40,23,32,84,55,7,82,9,31,58,17,92,26,61,39,51,70,54,90,3,41,32,53,28,10,63,98,12,2,47,59,21,9,4,19,11,99,11,25,16,24,37,27,10,4,7,70,66,24,41,7,15,28,29,58,55,64,84,34,47,31,70,60,30,88,55,47,51];
+    uint[NUM_TICKS] rand = [75,98,98,35,97,20,21,34,22,98,64,2,63,11,3,80,86,12,50,99,16,78,19,88,72,7,86,28,41,72,10,86,40,23,32,84,55,7,82,9,31,58,17,92,26,61,39,51,70,54,90,3,41,32,53,28,10,63,98,12,2,47,59,21,9,4,19,11,99,11,25,16,24,37,27,10,4,7,70,66,24,41,7,15,28,29,58,55,64,84,34,47,31,70,60,30,88,55,47,51]; // CONFIG:RAND
     function rollD100(uint t) public view returns (uint) {
         return rand[t];
     }
@@ -137,7 +140,7 @@ contract Session {
     }
 
     function verifyProofWithOffChainStorage(Claim calldata claim, ClaimProof memory proof) public view returns (bool) {
-        uint[(NUM_SEEKERS*2)+1] memory input;
+        uint[VERIFIER_WITHHASH_INPUTS] memory input;
         uint i = 0;
         uint s;
         for (s=0; s<NUM_SEEKERS; s++) {
@@ -160,7 +163,7 @@ contract Session {
     uint constant OFFSET_ACT = OFFSET_END + (NUM_SEEKERS*NUM_TICKS);
     uint constant OFFSET_TICK = OFFSET_ACT + (NUM_SEEKERS*NUM_TICKS);
     function verifyProofWithOnChainStorage(Claim calldata claim, ClaimProof memory proof) public view returns (bool) {
-        uint[(NUM_SEEKERS)+(4*NUM_SEEKERS*NUM_TICKS)+1] memory input;
+        uint[VERIFIER_NOHASH_INPUTS] memory input;
         uint t;
         uint s;
         // outputs (yields)
@@ -349,7 +352,7 @@ contract Session {
         // ensure sender is owner of seeker in slot
         require(seekerContract.ownerOf(seekerID) == tx.origin, 'not owner of seeker in slot');
         // check the given tick is in the past
-        require(tick <= uint8(block.number - session.startTick), 'cannot claim from the future');
+        require(tick <= block.number - session.startTick, 'cannot claim from the future');
         // ok
         return true;
     }
@@ -381,6 +384,39 @@ contract Session {
         for (uint i=0; i<onChainSlots.length; i++) {
             onChainSlots[i] = OnChainSlot(0,0);
         }
+    }
+
+    function modSessionWithOffChainStorage(
+        uint8 seekerID
+    ) public {
+        // grab if seeker in a slot
+        (uint slotID, bool ok) = getSeekerSlotIDOffChainStorage(seekerID);
+        if (!ok) {
+            require(ok, "seeker not in slot");
+        }
+        // do generic action validation
+        SlotConfig memory cfg = _joinSession(seekerID); // same as join for this test, IRL would be something else
+        // update the hash
+        offChainSlots[slotID].hash = hasher.poseidon([
+            offChainSlots[slotID].hash,
+            packSlotConfig(cfg)
+        ]);
+        // log the action data
+        emit SlotUpdated(uint8(slotID), cfg);
+    }
+
+    function modSessionWithOnChainStorage(
+        uint8 seekerID
+    ) public {
+        // grab if seeker in a slot
+        (uint slotID, bool ok) = getSeekerSlotIDOnChainStorage(seekerID);
+        if (!ok) {
+            require(ok, "seeker not in slot");
+        }
+        // do generic action validation
+        SlotConfig memory cfg = _joinSession(seekerID);
+        // update on-chain storage
+        onChainConfigs[slotID].push(cfg);
     }
 
     function joinSessionWithOffChainStorage(
@@ -436,6 +472,7 @@ contract Session {
             -
             min(attrs[7], session.affinity)
         ));
+        require(block.number - session.startTick <= NUM_TICKS, 'session ended');
         // build slot config
         return SlotConfig({
             action: ActionKind.JOIN,

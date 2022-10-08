@@ -2,6 +2,7 @@
 # groth16 setup requires lots of ram
 export NODE_OPTIONS="--max-old-space-size=16000"
 export REPORT_GAS="true"
+export CI="true"
 
 .PHONY: verify
 verify: verification_key.json proof.json
@@ -21,11 +22,11 @@ combatnohash_js/combatnohash.wasm: circuits/combatnohash.circom
 	rm -rf combat_fast_js
 	circom $< --wasm --sym
 
-combatnohash.r1cs: circuits/combatnohash.circom
+combatnohash.r1cs: circuits/combatnohash.circom circuits/templates.circom
 	rm -f combatnohash.r1cs
 	circom $< --r1cs
 
-combat_js/combat.wasm: circuits/combat.circom
+combat_js/combat.wasm: circuits/combat.circom circuits/templates.circom
 	rm -rf combat_js
 	circom $< --wasm --sym
 
@@ -55,10 +56,10 @@ proof.json: witness.wtns combat_0001.zkey input.json verification_key.json
 verification_key.json: combat_0001.zkey
 	npx snarkjs zkey export verificationkey $< $@
 
-combat_0001.zkey: combat_0000.zkey
-	echo 'yyy' | npx snarkjs zkey contribute $< $@ --name="1st Contributor Name" -v
+# combat_0001.zkey: combat_0000.zkey
+# 	echo 'yyy' | npx snarkjs zkey contribute $< $@ --name="1st Contributor Name" -v
 
-combat_0000.zkey: pot18_final.ptau combat.r1cs
+combat_0001.zkey: pot18_final.ptau combat.r1cs
 	npx snarkjs groth16 setup combat.r1cs $< $@
 
 combatnohash_0001.zkey: combatnohash_0000.zkey

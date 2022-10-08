@@ -12,6 +12,9 @@ export function createDeployment(hre: HardhatRuntimeEnvironment) {
     return new Deployment(hre);
 };
 
+const NUM_SEEKERS = parseInt(process.env.NUM_SEEKERS || '-1');
+const NUM_TICKS = parseInt(process.env.NUM_TICKS || '-1');
+
 export async function deployContracts(deployment: Deployment) {
 
     const [signer] = await deployment.hre.ethers.getSigners();
@@ -35,14 +38,14 @@ export async function deployContracts(deployment: Deployment) {
     const verifierWithHashContractArgs:any[] = [];
     const verifierWithHashContract = await deployment.deploy( {
         id: "rune",
-        contract: "src/CombatVerifier.sol:Verifier",
+        contract: `src/combatwithhash_${NUM_SEEKERS}_${NUM_TICKS}.sol:Verifier`,
         autoUpdate: true,
     }, ...verifierWithHashContractArgs) as Verifier;
 
     const verifierNoHashContractArgs:any[] = [];
     const verifierNoHashContract = await deployment.deploy( {
         id: "rune",
-        contract: "src/CombatNoHashVerifier.sol:Verifier",
+        contract: `src/combatnohash_${NUM_SEEKERS}_${NUM_TICKS}.sol:Verifier`,
         autoUpdate: true,
     }, ...verifierNoHashContractArgs) as Verifier;
 

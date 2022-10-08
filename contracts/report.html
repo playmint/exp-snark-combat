@@ -1,0 +1,536 @@
+<!doctype html>
+<html>
+<head>
+<style>
+* {
+	font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue",
+		Helvetica, Arial, "Lucida Grande", sans-serif;
+}
+ body {
+	 background: #222121;
+	 margin-bottom: 400px;
+	 color: #efefef;
+ }
+ #controls {
+	 font-size: 12px;
+	 background: #172026;
+	 position: fixed;
+	 width: 100%;
+	 bottom: 0;
+	 left:0;
+	 right:0;
+ }
+ .control {
+	 float:left;
+		 margin: 20px;
+ }
+ .right {
+	 float:right !important;
+ }
+ .chart {
+	 padding: 5%;
+ }
+ h1 {
+	 color: #456073;
+	 font-size: 16px;
+		 margin: 30px;
+ }
+</style>
+</head>
+<body>
+<h1>
+
+<div class="chart">
+	<h1>Starting a session</h1>
+  <canvas id="startChart"></canvas>
+</div>
+
+<div class="chart">
+<h1>Join a session</h1>
+  <canvas id="joinChart"></canvas>
+</div>
+
+<div class="chart">
+<h1>Claiming</h1>
+  <canvas id="claimChart"></canvas>
+</div>
+
+<div class="chart" style="display:none;">
+	<h1>Total per seeker</h1>
+  <canvas id="totalChart"></canvas>
+</div>
+
+<div id="controls">
+	<div class="control">
+		<label for="actions">Actions</label>
+		<select id="actions">
+			<option>0</option>
+			<option selected>1</option>
+			<option>2</option>
+		</select>
+	</div>
+	<div id="seekerscontrol" class="control">
+		<label for="seekers">Seekers</label>
+		<select id="seekers">
+			<option selected>1</option>
+			<option>2</option>
+			<option>4</option>
+			<option>8</option>
+		</select>
+	</div>
+	<div id="tickscontrol" class="control" style="display:none;">
+		<label for="ticks">Ticks</label>
+		<select id="ticks">
+			<option>8</option>
+			<option>16</option>
+			<option>32</option>
+			<option>64</option>
+			<option selected>128</option>
+			<option>255</option>
+		</select>
+	</div>
+	<div class="control right">
+		<label for="xaxis">x-axis</label>
+		<select id="xaxis">
+			<option selected>ticks</option>
+			<option>seekers</option>
+		</select>
+	</div>
+	<div class="control right">
+		<label for="anno">annotations</label>
+		<input id="anno" type="checkbox">
+	</div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="file:///Users/chrisfarms/src/github.com/playmint/exp-snark-combat/contracts/rawReport.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/2.0.1/chartjs-plugin-annotation.js"></script>
+<script>
+
+
+	let actions = 0;
+	let seekers = 1;
+	let ticks = 128;
+	let xAxis = 'ticks';
+	let annotationsEnabled = false;
+
+	const colors = {
+		OFF_CHAIN_STORAGE_1: '#FF671A',
+		OFF_CHAIN_STORAGE_2: '#FFBA0A',
+		ON_CHAIN_STORAGE_1: '#2086D5',
+		ON_CHAIN_STORAGE_2: '#7DDF64',
+
+		GRID: '#829EB0',
+		ANNOTATION_LINE: '#8EA7B8',
+		ANNOTATION_BACKGROUND: '#2F404B',
+		ANNOTATION_TEXT: '#8EA7B8',
+	};
+
+	const faint = (col) => col + '11';
+
+	const genFilter = () => {
+		return (report) => {
+			if (xAxis == 'ticks') {
+				return report.seekers == seekers && report.actions == actions;
+			} else if (xAxis == 'seekers') {
+				return report.ticks == ticks && report.actions == actions;
+			} else {
+				throw new Error(`unknown xaxis ${xAxisInput}`);
+			}
+		};
+	}
+	const genMap = (...methods) => {
+		return (report) => {
+			let y = 0;
+			methods.forEach(method => {
+				const data = report.data.filter(r => r.method == method);
+				if (data.length > 1) {
+					throw new Error(`expected to filter to single datapoint not ${data.length}`);
+				}
+				y += avg(
+					(data[0] || {gas:[]}).gas
+				);
+			});
+			return {x: report[xAxis], y};
+		}
+	}
+
+	const labels = [
+		'onChainCalc-offChainStore',
+		'offChainCalc-offChainStore',
+		'onChainCalc-onChainStore',
+		'offChainCalc-onChainStore',
+	];
+
+
+	const avg = (values) => {
+		return values.reduce((sum, v) => sum+=v, 0) / values.length;
+	}
+
+	const scales = {
+		x: {
+			axis: 'x',
+			type: 'linear',
+			position: 'bottom',
+			bounds: 'data',
+			title: {
+				display: true,
+				text: () => xAxis,
+				align: 'center',
+				color: colors.GRID
+			},
+			grid: {
+				display: false,
+				drawBorder: false,
+				drawOnChartArea: false,
+				color: colors.GRID,
+			},
+			ticks: {
+				color: colors.GRID,
+			},
+			//offset: false,
+			//min: 1,
+			//max: 8, // max seekers
+		},
+		y: {
+			axis: 'y',
+			type: 'linear',
+			position: 'left',
+			title: {
+				display: true,
+				text: 'gas',
+				color: colors.GRID,
+			},
+			grid: {
+				drawOnChartArea: true,
+				drawBorder: false,
+				lineWidth: 0.5,
+				color: colors.GRID,
+			},
+			ticks: {
+				color: colors.GRID,
+			},
+		}
+	};
+
+	const elements = {
+		point: {
+			borderColor: '#202b33',
+			radius: 2,
+			borderWidth: 2,
+			fill: true,
+		},
+		line: {
+			fill: false,
+		},
+	};
+
+	const happyzone = {
+		display: false,
+		type: 'box',
+		scaleID: 'y',
+		yMin: 50_000,
+		yMax: 500_000,
+		backgroundColor: 'rgba(0, 255, 0, 0.05)',
+		borderColor: 'rgba(33, 255, 33, 0.01)',
+		borderWidth: 1,
+		label: {
+			display: true,
+			position: "start",
+			content: 'happy zone'
+		}
+	};
+
+	const cryptRaid = {
+		display: () => annotationsEnabled,
+		type: 'line',
+		scaleID: 'y',
+		value: 130_000,
+		borderColor: colors.ANNOTATION_LINE,
+		borderWidth: 1,
+		borderDash: [2, 2],
+		borderDashOffset: 0,
+		label: {
+			backgroundColor: colors.ANNOTATION_BACKGROUND,
+			color: colors.ANNOTATION_TEXT,
+			display: true,
+			position: "end",
+			content: 'Crypt Raid'
+		}
+	};
+
+	const cryptClaim = {
+		display: () => annotationsEnabled,
+		type: 'line',
+		scaleID: 'y',
+		value: 250_000,
+		borderColor: colors.ANNOTATION_LINE,
+		borderWidth: 1,
+		borderDash: [2, 2],
+		borderDashOffset: 0,
+		label: {
+			backgroundColor: colors.ANNOTATION_BACKGROUND,
+			color: colors.ANNOTATION_TEXT,
+			display: true,
+			position: "end",
+			content: 'Crypt Claim'
+		}
+	};
+
+	const blockLimit = 15_000_000;
+	const isBlockLimitVisible = (ctx, datasets) => {
+		for (let i=0; i<datasets.length; i++) {
+			if (!ctx.chart.isDatasetVisible(i)) {
+				continue;
+			}
+			for (let j=0; j<datasets[i].data.length; j++) {
+				if (datasets[i].data[j].y > 10_000_000) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	const mkChart = (id, getDatasets) => {
+
+		const data = {
+			datasets: getDatasets(),
+		};
+
+		const chart = new Chart(
+			document.getElementById(id),
+			{
+				type: 'line',
+				data,
+				options: {
+					responsive: true,
+					plugins: {
+						autocolors: false,
+						legend: {
+							labels: {
+								usePointStyle: true,
+								color: colors.GRID,
+							},
+							position: 'bottom',
+						},
+						annotation: {
+							annotations: {
+								happyzone,
+								cryptRaid,
+								cryptClaim,
+								blocklimit: {
+									display: (ctx) => isBlockLimitVisible(ctx, data.datasets),
+									type: 'line',
+									scaleID: 'y',
+									value: blockLimit,
+									borderColor: colors.ANNOTATION_LINE,
+									borderWidth: 1,
+									borderDash: [2, 2],
+									borderDashOffset: 0,
+									label: {
+										backgroundColor: colors.ANNOTATION_BACKGROUND,
+										color: colors.ANNOTATION_TEXT,
+										display: true,
+										position: "start",
+										content: 'entire block'
+									}
+								}
+							}
+						}
+					},
+					elements,
+					scales,
+				}
+			}
+
+		);
+
+		const update = () => {
+			data.datasets.forEach((ds,i) => {
+				ds.data = getDatasets()[i].data;
+			});
+			chart.update();
+		}
+
+		return [chart, data, update];
+	}
+
+	// ------------------------
+
+	const [startChart, startData, startUpdate] = mkChart('startChart', () => ([
+		{
+			label: 'Start-OnChainStore',
+			backgroundColor: colors.ON_CHAIN_STORAGE_1,
+			borderColor: colors.ON_CHAIN_STORAGE_1,
+			data: raw
+			.filter(genFilter())
+			.map(genMap('resetSessionWithOnChainStorage'))
+		},
+		{
+			hidden: true,
+			label: 'Start-OffChainStore',
+			backgroundColor: colors.OFF_CHAIN_STORAGE_1,
+			borderColor: colors.OFF_CHAIN_STORAGE_1,
+			data: raw
+			.filter(genFilter())
+			.map(genMap('resetSessionWithOffChainStorage'))
+		},
+	]));
+
+	// ------------------
+
+	const [joinChart, joinData, joinUpdate] = mkChart('joinChart', () => ([
+		{
+			label: 'Join-OnChainStore',
+			backgroundColor: colors.ON_CHAIN_STORAGE_1,
+			borderColor: colors.ON_CHAIN_STORAGE_1,
+			data: raw
+			.filter(genFilter())
+			.map(genMap('joinSessionWithOnChainStorage'))
+		},
+		{
+			hidden: true,
+			label: 'Join-OffChainStore',
+			backgroundColor: colors.OFF_CHAIN_STORAGE_1,
+			borderColor: colors.OFF_CHAIN_STORAGE_1,
+			data: raw
+			.filter(genFilter())
+			.map(genMap('joinSessionWithOffChainStorage'))
+		},
+	]));
+
+	// -----------------
+
+	const [claimChart, claimData, claimUpdate] = mkChart('claimChart', () => ([
+		{
+			hidden: true,
+			label: 'OnChainCalc-OffChainStore',
+			backgroundColor: colors.OFF_CHAIN_STORAGE_1,
+			borderColor: colors.OFF_CHAIN_STORAGE_1,
+			data: raw
+			.filter(genFilter())
+			.map(genMap('claimWithOnChainCalcOffChainStorage'))
+		},
+		{
+			hidden: true,
+			label: 'OffChainCalc-OffChainStore',
+			backgroundColor: colors.OFF_CHAIN_STORAGE_2,
+			borderColor: colors.OFF_CHAIN_STORAGE_2,
+			data: raw
+			.filter(genFilter())
+			.map(genMap('claimWithOffChainCalcOffChainStorage'))
+		},
+		{
+			label: 'OnChainCalc-OnChainStore',
+			backgroundColor: colors.ON_CHAIN_STORAGE_1,
+			borderColor: colors.ON_CHAIN_STORAGE_1,
+			data: raw
+			.filter(genFilter())
+			.map(genMap('claimWithOnChainCalcOnChainStorage'))
+		},
+		{
+			hidden: true,
+			label: 'OffChainCalc-OnChainStore',
+			backgroundColor: colors.ON_CHAIN_STORAGE_2,
+			borderColor: colors.ON_CHAIN_STORAGE_2,
+			data: raw
+			.filter(genFilter())
+			.map(genMap('claimWithOffChainCalcOnChainStorage'))
+		},
+	]));
+
+
+	// ------------------
+
+	const [totalChart, totalData, totalUpdate] = mkChart('totalChart', () => ([
+		{
+			hidden: true,
+			label: 'Total-OnChainCalc-OffChainStore',
+			backgroundColor: '#F76E11',
+			borderColor: '#F76E11',
+			data: raw
+			.filter(genFilter())
+			.map(genMap('claimWithOnChainCalcOffChainStorage', 'joinSessionWithOffChainStorage', 'resetSessionWithOffChainStorage'))
+		},
+		{
+			hidden: true,
+			label: 'Total-OffChainCalc-OffChainStore',
+			backgroundColor: '#FF9F45',
+			borderColor: '#FF9F45',
+			data: raw
+			.filter(genFilter())
+			.map(genMap('claimWithOffChainCalcOffChainStorage', 'joinSessionWithOffChainStorage', 'resetSessionWithOffChainStorage'))
+		},
+		{
+			label: 'Total-OnChainCalc-OnChainStore',
+			backgroundColor: '#1C3879',
+			borderColor: '#1C3879',
+			data: raw
+			.filter(genFilter())
+			.map(genMap('claimWithOnChainCalcOnChainStorage', 'joinSessionWithOnChainStorage', 'resetSessionWithOnChainStorage'))
+		},
+		{
+			hidden: true,
+			label: 'Total-OffChainCalc-OnChainStore',
+			backgroundColor: '#607EAA',
+			borderColor: '#607EAA',
+			data: raw
+			.filter(genFilter())
+			.map(genMap('claimWithOffChainCalcOnChainStorage', 'joinSessionWithOnChainStorage', 'resetSessionWithOnChainStorage'))
+		},
+	]));
+
+	// ------------------
+
+	const update = () => {
+		startUpdate();
+		joinUpdate();
+		claimUpdate();
+		totalUpdate();
+	}
+
+	const numActionsInput = document.getElementById('actions');
+	numActionsInput.addEventListener('change', (e) => {
+		actions = parseInt(e.target.value);
+		update();
+	});
+
+	const numSeekersInput = document.getElementById('seekers');
+	numSeekersInput.addEventListener('change', (e) => {
+		seekers = parseInt(e.target.value);
+		update();
+	});
+
+	const numTicksInput = document.getElementById('ticks');
+	numTicksInput.addEventListener('change', (e) => {
+		ticks = parseInt(e.target.value);
+		update();
+	});
+
+	const annoInput = document.getElementById('anno');
+	annoInput.addEventListener('change', (e) => {
+		annotationsEnabled = e.target.checked;
+		update();
+	});
+
+	const xAxisInput = document.getElementById('xaxis');
+	xAxisInput.addEventListener('change', (e) => {
+		xAxis = e.target.value;
+		console.log(xAxis);
+		const tickControl = document.getElementById('tickscontrol');
+		const seekControl = document.getElementById('seekerscontrol');
+		if (xAxis == 'ticks') {
+			tickControl.style.display = 'none';
+			seekControl.style.display = 'block';
+		} else if (xAxis == 'seekers') {
+			tickControl.style.display = 'block';
+			seekControl.style.display = 'none';
+		}
+		update();
+	});
+
+</script>
+</body>
+</html>

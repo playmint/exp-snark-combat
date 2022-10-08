@@ -17,6 +17,7 @@
     "@nomicfoundation/hardhat-toolbox": "^1.0.2",
     "circomlibjs": "^0.1.7",
     "hardhat": "^2.11.0",
+    "hardhat-circom": "^3.3.1",
     "hardhat-gas-reporter": "^1.0.9",
     "hardhat-preprocessor": "^0.1.5",
     "snarkjs": "^0.4.26"

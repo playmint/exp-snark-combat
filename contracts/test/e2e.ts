@@ -20,8 +20,16 @@ let signer:SignerWithAddress;
 let sessionContract:Session;
 let seekerContract:Seeker;
 
-const numSeekers = 3;
-const numTicks = 100;
+function env(key:string):string {
+    const v = process.env[key];
+    if (!v) {
+        throw new Error(`env ${key} must be set`);
+    }
+    return v;
+}
+const NUM_SEEKERS = parseInt(env('NUM_SEEKERS'));
+const NUM_TICKS = parseInt(env('NUM_TICKS'));
+const NUM_ACTIONS = parseInt(env('NUM_ACTIONS'));
 const seekerGeneration = 1;
 
 interface Prover {
@@ -31,13 +39,13 @@ interface Prover {
 }
 
 const PROVE_ON_CHAIN_INPUTS:Prover = {
-    wasm: path.join("..", "combatnohash_js", "combatnohash.wasm"),
-    key: path.join("..", "combatnohash_0001.zkey"),
+    wasm: env('NOHASH_WASM_PATH'),
+    key: env('NOHASH_KEY_PATH'),
     withHashes: false,
 };
 const PROVE_OFF_CHAIN_INPUTS:Prover = {
-    wasm: path.join("..", "combat_js", "combat.wasm"),
-    key: path.join("..", "combat_0001.zkey"),
+    wasm: env('WITHHASH_WASM_PATH'),
+    key: env('WITHHASH_KEY_PATH'),
     withHashes: true,
 };
 
@@ -74,7 +82,7 @@ interface SlotConfig {
 interface Claim {
     slot: number;
     tick: number;
-    yields: [BigNumber, BigNumber, BigNumber];
+    yields: any;
 }
 
 interface SessionState {
@@ -100,9 +108,6 @@ interface CombatState {
 };
 
 
-// const runs = Array(numTicks).fill(null).map((v, i) => ({tick: i, slot: i % numSeekers}));
-const runs = [{tick: 10, slot: 0}]; // quick
-
 describe('E2E', async function () {
 
     this.timeout(1000000000);
@@ -113,7 +118,7 @@ describe('E2E', async function () {
         // wait for contract deployment to complete
         ({ sessionContract, seekerContract } = await deployContracts(deployment));
         // mint n seekers
-        for (let i=0; i<numSeekers; i++) {
+        for (let i=0; i<NUM_SEEKERS; i++) {
             await seekerContract.mint(
                 signer.address,
                 seekerGeneration,
@@ -129,117 +134,150 @@ describe('E2E', async function () {
                 ],
             ).then(tx => tx.wait());
         }
+        // manual mining mode
+        await ethers.provider.send("evm_setAutomine", [false]);
     });
 
-    runs.forEach(({tick, slot}) => { // do multiple runs for better gas comparrison
 
-        describe(`with tick=${tick} and slot=${slot}`, () => {
+    const tick = NUM_TICKS; // always prove this number of ticks
+    const slot = 0; // always prove this slot
 
-            const sessionCorruption = 50;
 
-            it("resetSessionWithOffChainStorage", async () => {
-                await sessionContract.resetSessionWithOffChainStorage(sessionCorruption).then(tx => tx.wait());
-                await ethers.provider.send("evm_mine", [])
-            });
+    let sessionCorruption = 50;
+    let sessionStartBlock:number;
 
-            it("resetSessionWithOnChainStorage", async () => {
-                await sessionContract.resetSessionWithOnChainStorage(sessionCorruption).then(tx => tx.wait());
-                await ethers.provider.send("evm_mine", [])
-            });
+    async function mine(txs:any[]): Promise<any> {
+        await ethers.provider.send("evm_mine", []);
+        while(true) {
+            const pendingBlock = await ethers.provider.send("eth_getBlockByNumber", ["pending", true]);
+            if (pendingBlock.transactions.length==0) {
+                break;
+            }
+            console.log(`waiting for ${pendingBlock.transactions.length} to mine`);
+            await ethers.provider.send("evm_mine", []);
+        }
+        if (txs.length>0) {
+            return Promise.all(txs.map(tx => tx.wait()));
+        } else {
+            return;
+        }
+    }
 
-            it("joinSessionWithOffChainStorage", async () => {
-                for (let seekerID=1; seekerID<=numSeekers; seekerID++) {
-                    await sessionContract.joinSessionWithOffChainStorage(seekerID).then(tx => tx.wait());
-                }
-            });
-
-            it("joinSessionWithOnChainStorage", async () => {
-                for (let seekerID=1; seekerID<=numSeekers; seekerID++) {
-                    await sessionContract.joinSessionWithOnChainStorage(seekerID).then(tx => tx.wait());
-                }
-            });
-
-            it("should fast forward NUM_TICKS blocks", async () => {
-                for (let i=0; i<numTicks; i++) {
-                    await ethers.provider.send("evm_mine", [])
-                }
-            });
-
-            it("claimWithOnChainCalcOffChainStorage", async () => {
-                // build the session state from the events
-                const state = await getSessionState();
-                console.log('session state <=== ', state);
-
-                // build the actions data (slot configs over time) from the events
-                const cfgs = state.slots.map(slot => slot.configs);
-                console.log('cfg ===> ', cfgs);
-
-                // fetch the calculated yields from the chain (this could be done offline)
-                const yields = await sessionContract.getSlotYieldsWithOffChainStorage(tick, cfgs);
-                console.log('yields <=== ', yields);
-
-                // construct a claim for seeker in slot0
-                const claim:Claim = {
-                    tick,
-                    slot: 0,
-                    yields,
-                };
-                console.log('claim ===>', claim);
-
-                // attempt to claim
-                await sessionContract.claimWithOnChainCalcOffChainStorage(claim, cfgs).then(tx => tx.wait());
-            });
-
-            it("claimWithOnChainCalcOnChainStorage", async () => {
-                // fetch the calculated yields from the chain (this could be done offline)
-                const yields = await sessionContract.getSlotYieldsWithOnChainStorage(tick);
-                console.log('yields <=== ', yields);
-
-                // construct a claim for seeker in slot0
-                const claim:Claim = {
-                    tick,
-                    slot: 0,
-                    yields,
-                };
-                console.log('claim ===>', claim);
-
-                // attempt to claim
-                await sessionContract.claimWithOnChainCalcOnChainStorage(claim).then(tx => tx.wait());
-            });
-
-            it("claimWithOffChainCalcOffChainStorage", async () => {
-                // build the session state from the events
-                const state = await getSessionState();
-                console.log('session state <=== ', state);
-
-                // build the actions data (slot configs over time) from the events
-                const cfgs = state.slots.map(slot => slot.configs);
-                console.log('cfg ===> ', cfgs);
-
-                // build claim and proof to the state at tick
-                const [claim, proof] = await getClaimProof(cfgs, tick, slot, PROVE_OFF_CHAIN_INPUTS);
-                console.log('claim ===>', claim);
-
-                // attempt to claim
-                await sessionContract.claimWithOffChainCalcOffChainStorage(claim, proof).then(tx => tx.wait());
-            });
-
-            it("claimWithOffChainCalcOnChainStorage", async () => {
-                // fetch the actions data (slot configs over time) from on chain
-                const cfgs = await sessionContract.getOnChainConfigs();
-                console.log('cfg ===> ', cfgs);
-
-                // build claim and proof to the state at tick
-                const [claim, proof] = await getClaimProof(cfgs, tick, slot, PROVE_ON_CHAIN_INPUTS);
-                console.log('claim ===>', claim);
-
-                // attempt to claim
-                await sessionContract.claimWithOffChainCalcOnChainStorage(claim, proof).then(tx => tx.wait());
-            });
-
-        });
-
+    it("resetSession", async () => {
+        const txs = [];
+        txs.push(await sessionContract.resetSessionWithOffChainStorage(sessionCorruption));
+        txs.push(await sessionContract.resetSessionWithOnChainStorage(sessionCorruption));
+        await mine(txs);
     });
+
+    it("note session start block", async () => {
+        sessionStartBlock = await provider.getBlockNumber();
+    });
+
+    it("joinSession", async () => {
+        const txs = [];
+        for (let seekerID=1; seekerID<=NUM_SEEKERS; seekerID++) {
+            txs.push(await sessionContract.joinSessionWithOffChainStorage(seekerID));
+            txs.push(await sessionContract.joinSessionWithOnChainStorage(seekerID));
+        }
+        await mine(txs);
+    });
+
+    it("modSession", async () => {
+        for (let a=0; a<NUM_ACTIONS; a++) {
+            const txs = [];
+            for (let seekerID=1; seekerID<=NUM_SEEKERS; seekerID++) {
+                txs.push(await sessionContract.modSessionWithOffChainStorage(seekerID));
+                txs.push(await sessionContract.modSessionWithOnChainStorage(seekerID));
+            }
+            await mine(txs);
+        }
+    });
+
+    it("should fast forward to NUM_TICKS blocks", async () => {
+        const isPastLastTick = async ():Promise<boolean> => {
+            const currentBlock = await provider.getBlockNumber();
+            return (currentBlock - sessionStartBlock) > (NUM_TICKS+1);
+        }
+        while (!(await isPastLastTick())) {
+            await mine([]);
+        }
+        // reenable auto-mine from this point
+        await ethers.provider.send("evm_setAutomine", [true]);
+    });
+
+    it("claimWithOnChainCalcOffChainStorage", async () => {
+        // build the session state from the events
+        const state = await getSessionState(sessionStartBlock);
+        console.log('session state <=== ', state);
+
+        // build the actions data (slot configs over time) from the events
+        const cfgs = state.slots.map(slot => slot.configs);
+        console.log('cfg ===> ', cfgs);
+
+        // fetch the calculated yields from the chain (this could be done offline)
+        const yields = await sessionContract.getSlotYieldsWithOffChainStorage(tick, cfgs);
+        console.log('yields <=== ', yields);
+
+        // construct a claim for seeker in slot0
+        const claim:Claim = {
+            tick,
+            slot: 0,
+            yields,
+        };
+        console.log('claim ===>', claim);
+
+        // attempt to claim
+        await sessionContract.claimWithOnChainCalcOffChainStorage(claim, cfgs).then(tx => tx.wait());
+    });
+
+    it("claimWithOnChainCalcOnChainStorage", async () => {
+        // fetch the calculated yields from the chain (this could be done offline)
+        const yields = await sessionContract.getSlotYieldsWithOnChainStorage(tick);
+        console.log('yields <=== ', yields);
+
+        // construct a claim for seeker in slot0
+        const claim:Claim = {
+            tick,
+            slot: 0,
+            yields,
+        };
+        console.log('claim ===>', claim);
+
+        // attempt to claim
+        await sessionContract.claimWithOnChainCalcOnChainStorage(claim).then(tx => tx.wait());
+    });
+
+    it("claimWithOffChainCalcOffChainStorage", async () => {
+        // build the session state from the events
+        const state = await getSessionState(sessionStartBlock);
+        console.log('session state <=== ', state);
+
+        // build the actions data (slot configs over time) from the events
+        const cfgs = state.slots.map(slot => slot.configs);
+        console.log('cfg ===> ', cfgs);
+
+        // build claim and proof to the state at tick
+        const [claim, proof] = await getClaimProof(cfgs, tick, slot, PROVE_OFF_CHAIN_INPUTS);
+        console.log('claim ===>', claim);
+
+        // attempt to claim
+        await sessionContract.claimWithOffChainCalcOffChainStorage(claim, proof).then(tx => tx.wait());
+    });
+
+    it("claimWithOffChainCalcOnChainStorage", async () => {
+        // fetch the actions data (slot configs over time) from on chain
+        const cfgs = await sessionContract.getOnChainConfigs();
+        console.log('cfg ===> ', cfgs);
+
+        // build claim and proof to the state at tick
+        const [claim, proof] = await getClaimProof(cfgs, tick, slot, PROVE_ON_CHAIN_INPUTS);
+        console.log('claim ===>', claim);
+
+        // attempt to claim
+        await sessionContract.claimWithOffChainCalcOnChainStorage(claim, proof).then(tx => tx.wait());
+    });
+
 
 
     // it("should return same outputs for both on-chain vs off-chain", async () => {
@@ -275,12 +313,12 @@ async function getCurrentTick(): Promise<number> {
     return currentBlock - session.startTick;
 }
 
-async function getSessionState(): Promise<SessionState> {
+async function getSessionState(fromBlock: number): Promise<SessionState> {
     // fetch the session config
     const session = await sessionContract.session();
     // fetch the occupied slots
     const slots: Slot[] = [];
-    for (let i=0; i<numSeekers; i++) {
+    for (let i=0; i<NUM_SEEKERS; i++) {
         const slot = await sessionContract.offChainSlots(i);
         slots.push({
             seekerID: slot.seekerID,
@@ -289,15 +327,14 @@ async function getSessionState(): Promise<SessionState> {
         });
     }
     // fetch all the Action events
-    const events = await sessionContract.queryFilter(sessionContract.filters.SlotUpdated(), 0, 500);
+    const events = await sessionContract.queryFilter(sessionContract.filters.SlotUpdated(), fromBlock, 50000);
     // group the Actions by their seeker slot
-    events.forEach(({blockNumber, args}): Slot[] => {
+    events.forEach(({blockNumber, args}) => {
         const [
             slotID,
-            configs,
+            config,
         ] = args;
-        slots[slotID].configs.push(configs);
-        return slots;
+        slots[slotID].configs.push(config);
     });
 
     return {
@@ -351,7 +388,7 @@ async function getClaimProof(cfgs: SlotConfig[][], tick:number, slot:number, pro
         const claim = {
             tick,
             slot,
-            yields: outputs.publicSignals.slice(0,numSeekers),
+            yields: outputs.publicSignals.slice(0,NUM_SEEKERS),
         };
         // console.log('state', state);
         return [claim, proof as ClaimProofStruct];
@@ -361,17 +398,17 @@ async function generateInputs(cfgs:SlotConfig[][], currentTick:number, withHashe
 
     // convert actions into expanded list of all inputs at each tick per seeker
     const inputs = {
-        seekerHRV: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
-        seekerYLB: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
-        seekerEND: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
-        seekerACT: Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0)),
+        seekerHRV: Array(NUM_TICKS).fill(null).map(() => Array(NUM_SEEKERS).fill(0)),
+        seekerYLB: Array(NUM_TICKS).fill(null).map(() => Array(NUM_SEEKERS).fill(0)),
+        seekerEND: Array(NUM_TICKS).fill(null).map(() => Array(NUM_SEEKERS).fill(0)),
+        seekerACT: Array(NUM_TICKS).fill(null).map(() => Array(NUM_SEEKERS).fill(0)),
         currentTick,
     } as any;
     if (withHashes) {
-        inputs.seekerValuesHash = Array(numSeekers).fill(null);
-        inputs.seekerValuesUpdated = Array(numTicks).fill(null).map(() => Array(numSeekers).fill(0));
+        inputs.seekerValuesHash = Array(NUM_SEEKERS).fill(null);
+        inputs.seekerValuesUpdated = Array(NUM_TICKS).fill(null).map(() => Array(NUM_SEEKERS).fill(0));
     }
-    for (let s=0; s<numSeekers; s++) {
+    for (let s=0; s<NUM_SEEKERS; s++) {
         let inputValuesHash = 0;
         const poseidon = await circomlib.buildPoseidon();
 
@@ -390,7 +427,7 @@ async function generateInputs(cfgs:SlotConfig[][], currentTick:number, withHashe
                 }
                 // console.log('hash afr', poseidon.F.toString(inputValuesHash), h);
             }
-            for (let t=cfg.tick; t<numTicks; t++) {
+            for (let t=cfg.tick; t<NUM_TICKS; t++) {
                 inputs.seekerHRV[t][s] = cfg.hrv;
                 inputs.seekerYLB[t][s] = cfg.yldb;
                 inputs.seekerEND[t][s] = cfg.end;
