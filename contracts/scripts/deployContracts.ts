@@ -35,38 +35,38 @@ export async function deployContracts(deployment: Deployment) {
 
     await seekerContract.setMaxSupply(1, 500);
 
-    const verifierWithHashContractArgs:any[] = [];
-    const verifierWithHashContract = await deployment.deploy( {
-        id: "rune",
-        contract: `src/combatwithhash_${NUM_SEEKERS}_${NUM_TICKS}.sol:Verifier`,
-        autoUpdate: true,
-    }, ...verifierWithHashContractArgs) as Verifier;
+    // const verifierWithHashContractArgs:any[] = [];
+    // const verifierWithHashContract = await deployment.deploy( {
+    //     id: "verifierWithHash",
+    //     contract: `src/combatwithhash_${NUM_SEEKERS}_${NUM_TICKS}.sol:Verifier`,
+    //     autoUpdate: true,
+    // }, ...verifierWithHashContractArgs) as Verifier;
 
-    const verifierNoHashContractArgs:any[] = [];
-    const verifierNoHashContract = await deployment.deploy( {
-        id: "rune",
-        contract: `src/combatnohash_${NUM_SEEKERS}_${NUM_TICKS}.sol:Verifier`,
-        autoUpdate: true,
-    }, ...verifierNoHashContractArgs) as Verifier;
+    // const verifierNoHashContractArgs:any[] = [];
+    // const verifierNoHashContract = await deployment.deploy( {
+    //     id: "verifierNoHash",
+    //     contract: `src/combatnohash_${NUM_SEEKERS}_${NUM_TICKS}.sol:Verifier`,
+    //     autoUpdate: true,
+    // }, ...verifierNoHashContractArgs) as Verifier;
 
-    const dungeonContractArgs:any[] = [
-        seekerContract.address,
-        verifierWithHashContract.address,
-        verifierNoHashContract.address,
-        poseidonContract.address,
-    ];
-    const sessionContract = await deployment.deploy( {
-        id: "session",
-        contract: "src/Session.sol:Session",
-        autoUpdate: true,
-    }, ...dungeonContractArgs) as Session;
+    // const dungeonContractArgs:any[] = [
+    //     seekerContract.address,
+    //     verifierWithHashContract.address,
+    //     verifierNoHashContract.address,
+    //     poseidonContract.address,
+    // ];
+    // const sessionContract = await deployment.deploy( {
+    //     id: "session",
+    //     contract: "src/Session.sol:Session",
+    //     autoUpdate: true,
+    // }, ...dungeonContractArgs) as Session;
 
     return {
-        poseidonContract,
+        // poseidonContract,
         seekerContract,
-        verifierWithHashContract,
-        verifierNoHashContract,
-        sessionContract,
+        // verifierWithHashContract,
+        // verifierNoHashContract,
+        // sessionContract,
     }
 
 };
