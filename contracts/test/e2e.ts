@@ -49,6 +49,21 @@ interface Prover {
 //     withHashes: true,
 // };
 
+enum GameObjectAttr {
+    resonance,     // 0
+    health,        // 1
+    attack,        // 2
+    criticalHit,   // 3
+    agility,       // 4
+    scout,         // 5
+    capacity,      // 6
+    endurance,     // 7
+    harvest,       // 8
+    yieldBonus,    // 9
+    assemblySpeed, // 10
+    modBonus       // 11
+}
+
 enum ActionKind {
     ENTER,
     EQUIP,
@@ -133,39 +148,13 @@ describe('E2E', async function () {
 
         await modContract.mint(
             signer.address, 
-            [
-                0, // resonance
-                10, // health
-                0, // attack
-                0, // criticalHit
-
-                0, // agility
-                0, // scout
-                0, // capacity
-                0, // endurance
-                0, // harvest
-                0, // yieldBonus
-                0, // craftingSpeed
-                0, // modBonus
-            ],
+            GameObjectAttr.health,
+            10,
         ).then(tx => tx.wait());
         await modContract.mint(
             signer.address, 
-            [
-                0, // resonance
-                0, // health
-                10, // attack
-                0, // criticalHit
-
-                0, // agility
-                0, // scout
-                0, // capacity
-                0, // endurance
-                0, // harvest
-                0, // yieldBonus
-                0, // craftingSpeed
-                0, // modBonus
-            ],
+            GameObjectAttr.attack,
+            10,
         ).then(tx => tx.wait());
 
         // manual mining mode

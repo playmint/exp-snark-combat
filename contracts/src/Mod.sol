@@ -10,23 +10,28 @@ import "./Seeker.sol";
 
 struct ModData {
     uint id;
-    uint8 resonance;   // 0
-    uint8 health;  // 1
-    uint8 attack;  // 2
-    uint8 criticalHit;      // 3
-    uint8 agility;   // 4
-    uint8 scout;  // 5
-    uint8 capacity;    // 6
-    uint8 endurance; // 7
-    uint8 harvest; // 8
-    uint8 yieldBonus; // 9
-    uint8 craftingSpeed; // 10
-    uint8 modBonus; // 11
+    GameObjectAttr attr;
+    uint8 value;
+}
+
+enum GameObjectAttr {
+    resonance,     // 0
+    health,        // 1
+    attack,        // 2
+    criticalHit,   // 3
+    agility,       // 4
+    scout,         // 5
+    capacity,      // 6
+    endurance,     // 7
+    harvest,       // 8
+    yieldBonus,    // 9
+    assemblySpeed, // 10
+    modBonus       // 11
 }
 
 contract Mod is ERC721Enumerable, Ownable {
     uint256 public count;
-    mapping(uint256 => uint256) public _attrs;
+    mapping(uint256 => ModData) public _tokenData;
 
     Seeker public  _seekerContract;
 
@@ -77,75 +82,24 @@ contract Mod is ERC721Enumerable, Ownable {
     }
 
     // mint
-    function mint(address to, uint8[12] memory attrs) public returns (uint256 tokenId) {
+    function mint(address to, GameObjectAttr attr, uint8 value) public returns (uint256 tokenId) {
         count++;
         tokenId = count;
-        _attrs[tokenId] = packAttrs(attrs);
+        _tokenData[tokenId] = ModData(tokenId, attr, value);
         _safeMint(to, tokenId);
         return tokenId;
     }
 
-    function packAttrs(uint8[12] memory attrs) private pure returns(uint256 packed) {
-        return 0
-        | (uint256(attrs[0]) << 0)
-        | (uint256(attrs[1]) << 8)
-        | (uint256(attrs[2]) << 16)
-        | (uint256(attrs[3]) << 24)
-        | (uint256(attrs[4]) << 32)
-        | (uint256(attrs[5]) << 40)
-        | (uint256(attrs[6]) << 48)
-        | (uint256(attrs[7]) << 56)
-        | (uint256(attrs[8]) << 64)
-        | (uint256(attrs[9]) << 72)
-        | (uint256(attrs[10]) << 80)
-        | (uint256(attrs[11]) << 88);
-    }
-
-    function unpackAttrs(uint256 packed) private pure returns(uint8[12] memory attrs) {
-        attrs[0] = uint8((packed >> 0) & 0xff);
-        attrs[1] = uint8((packed >> 8) & 0xff);
-        attrs[2] = uint8((packed >> 16) & 0xff);
-        attrs[3] = uint8((packed >> 24) & 0xff);
-        attrs[4] = uint8((packed >> 32) & 0xff);
-        attrs[5] = uint8((packed >> 40) & 0xff);
-        attrs[6] = uint8((packed >> 48) & 0xff);
-        attrs[7] = uint8((packed >> 56) & 0xff);
-        attrs[8] = uint8((packed >> 64) & 0xff);
-        attrs[9] = uint8((packed >> 72) & 0xff);
-        attrs[10] = uint8((packed >> 80) & 0xff);
-        attrs[11] = uint8((packed >> 88) & 0xff);
-    }
-
-    function getAttrs(uint256 tokenId) public view returns (uint8[12] memory) {
-        return unpackAttrs(_attrs[tokenId]);
-    }
-
     function getData(uint256 tokenId) public view returns (ModData memory data) {
-        uint8[12] memory attrs = unpackAttrs(_attrs[tokenId]);
-        data.id              = tokenId;
-        data.resonance       = attrs[0];
-        data.health          = attrs[1];
-        data.attack          = attrs[2];
-        data.criticalHit     = attrs[3];
-        data.agility         = attrs[4];
-        data.scout           = attrs[5];
-        data.capacity        = attrs[6];
-        data.endurance       = attrs[7];
-        data.harvest         = attrs[8];
-        data.yieldBonus      = attrs[9];
-        data.craftingSpeed   = attrs[10];
-        data.modBonus        = attrs[11];
-
-        return data;
+        return _tokenData[tokenId];
     }
 
     function getModdedSeekerAttrs(uint256 seekerId) public view returns (uint8[12] memory) {
         uint8[12] memory attrs = _seekerContract.getAttrs(seekerId);
         for (uint i = 0; i < _seekerToMods[seekerId].length; i++) {
-            uint8[12] memory modAttrs = getAttrs(_seekerToMods[seekerId][i]);
-            for (uint j = 0; j < 12; j++) {
-                attrs[j] += modAttrs[j]; // Any gas savings if I check if modAttrs[j] > 0?
-            }
+            uint256 modId = _seekerToMods[seekerId][i];
+            ModData memory modData = _tokenData[modId];
+            attrs[uint256(modData.attr)] += modData.value;
         }
 
         return attrs;
