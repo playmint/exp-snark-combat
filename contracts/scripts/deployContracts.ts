@@ -4,7 +4,7 @@ import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { Contract, ContractFactory } from "ethers";
 import { TransactionResponse } from "@ethersproject/abstract-provider";
 import { simpleVarCheckValue, mapVarCheckValue } from "./common";
-import { Session, Seeker, Rune, Verifier } from "../typechain-types";
+import { Mod, Seeker } from "../typechain-types";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import * as circomlib from "circomlibjs";
 
@@ -33,7 +33,15 @@ export async function deployContracts(deployment: Deployment) {
         autoUpdate: true,
     }, ...seekerContractArgs) as Seeker;
 
-    await seekerContract.setMaxSupply(1, 500);
+    await seekerContract.setMaxSupply(1, 500).then(tx => tx.wait());
+
+    const modContract = await deployment.deploy( {
+        id: "mod",
+        contract: "src/Mod.sol:Mod",
+        autoUpdate: true,
+    }) as Mod;
+
+    await modContract.setSeekerContract(seekerContract.address).then(tx => tx.wait());
 
     // const verifierWithHashContractArgs:any[] = [];
     // const verifierWithHashContract = await deployment.deploy( {
@@ -62,8 +70,9 @@ export async function deployContracts(deployment: Deployment) {
     // }, ...dungeonContractArgs) as Session;
 
     return {
-        // poseidonContract,
         seekerContract,
+        modContract
+        // poseidonContract,
         // verifierWithHashContract,
         // verifierNoHashContract,
         // sessionContract,

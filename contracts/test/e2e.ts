@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import { createDeployment, deployContracts } from "../scripts/deployContracts";
-import { Session, Seeker } from "../typechain-types";
+import { Mod, Seeker } from "../typechain-types";
 import { ClaimProofStruct } from "../typechain-types/src/Session.sol/Session";
 import path from "path";
 import fs from "fs";
@@ -17,8 +17,8 @@ const deployment = createDeployment(hre);
 const provider = hre.ethers.provider;
 
 let signer:SignerWithAddress;
-let sessionContract:Session;
 let seekerContract:Seeker;
+let modContract:Mod;
 
 function env(key:string):string {
     const v = process.env[key];
@@ -107,7 +107,7 @@ describe('E2E', async function () {
         // keep the signer addr
         [signer] = await ethers.getSigners();
         // wait for contract deployment to complete
-        ({ seekerContract } = await deployContracts(deployment));
+        ({ seekerContract, modContract } = await deployContracts(deployment));
         // mint n seekers
         for (let i=0; i<NUM_SEEKERS; i++) {
             await seekerContract.mint(
@@ -115,7 +115,7 @@ describe('E2E', async function () {
                 seekerGeneration,
                 [
                     i, // resonance
-                    50, // health
+                    100, // health
                     1, // attack
                     0, // criticalHit
 
@@ -131,8 +131,45 @@ describe('E2E', async function () {
             ).then(tx => tx.wait());
         }
 
+        await modContract.mint(
+            signer.address, 
+            [
+                0, // resonance
+                10, // health
+                0, // attack
+                0, // criticalHit
+
+                0, // agility
+                0, // scout
+                0, // capacity
+                0, // endurance
+                0, // harvest
+                0, // yieldBonus
+                0, // craftingSpeed
+                0, // modBonus
+            ],
+        ).then(tx => tx.wait());
+        await modContract.mint(
+            signer.address, 
+            [
+                0, // resonance
+                0, // health
+                10, // attack
+                0, // criticalHit
+
+                0, // agility
+                0, // scout
+                0, // capacity
+                0, // endurance
+                0, // harvest
+                0, // yieldBonus
+                0, // craftingSpeed
+                0, // modBonus
+            ],
+        ).then(tx => tx.wait());
+
         // manual mining mode
-        await ethers.provider.send("evm_setAutomine", [false]);
+        // await ethers.provider.send("evm_setAutomine", [false]);
     });
 
 
@@ -160,10 +197,54 @@ describe('E2E', async function () {
         }
     }
 
-    it("Should return seeker data", async () => {
+    it("Should return seeker data for last ID", async () => {
         const seekerData = await seekerContract.getData(NUM_SEEKERS);
-        console.log(`data:`, seekerData);
+        // console.log(`seekerData:`, seekerData);
+        expect(seekerData.id).to.not.eq(0);
     });
+    
+    it("Should return mod data for ID 1", async () => {
+        const modData = await modContract.getData(1);
+        // console.log(`modData:`, modData);
+        expect(modData.id).to.not.eq(0);
+    });
+
+    it("Should be able to equip 2 mods ", async () => {
+        // Equip mods 1 and 2
+        await modContract.equip(1, 1).then(tx => tx.wait());
+        await modContract.equip(2, 1).then(tx => tx.wait());
+        
+        const equippedMods = await modContract.getSeekerMods(1);
+        expect(equippedMods.length).to.eq(2);
+        expect(equippedMods[0]).to.eq(1);
+
+        // Cannot re-equip same mod
+        let couldReEquip = false;
+        try {
+            await modContract.equip(1, 1).then(tx => tx.wait());
+            couldReEquip = true;
+        } catch {}
+
+        expect(couldReEquip, "Shouldn't be able to re-equip same mod").to.eq(false);
+    })
+
+    it("Unquipping the first mod should leave the second mod in slot 0", async () => {
+        await modContract.unequip(1, 1).then(tx => tx.wait());
+        const equippedMods = await modContract.getSeekerMods(1);
+        expect(equippedMods.length).to.eq(1);
+        expect(equippedMods[0], "Expected equipped mod to be mod equipped second").to.eq(2);
+    })
+
+    it("Should return modded stats for the seeker", async() => {
+        const baseStats = await seekerContract.getAttrs(1);
+        const moddedStats = await modContract.getModdedSeekerAttrs(1);
+
+        // console.log("baseStats:", baseStats);
+        // console.log("moddedStats:", moddedStats);
+
+        const attackIndex = 2;
+        expect(moddedStats[attackIndex]).to.be.gt(baseStats[attackIndex]);
+    })
 
     // it("resetSession", async () => {
     //     const txs = [];
