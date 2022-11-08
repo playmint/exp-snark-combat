@@ -8,7 +8,9 @@
     "test": "test"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npx hardhat test",
+    "prettier": "prettier --write 'src/**/*.sol'",
+    "lint": "prettier --list-different 'src/**/*.sol'"
   },
   "author": "",
   "license": "ISC",
@@ -20,6 +22,8 @@
     "hardhat-circom": "^3.3.1",
     "hardhat-gas-reporter": "^1.0.9",
     "hardhat-preprocessor": "^0.1.5",
+    "prettier": "^2.7.1",
+    "prettier-plugin-solidity": "^1.0.0-rc.1",
     "snarkjs": "^0.4.26"
   },
   "dependencies": {
