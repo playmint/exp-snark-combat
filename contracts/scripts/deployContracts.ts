@@ -4,7 +4,7 @@ import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { Contract, ContractFactory } from "ethers";
 import { TransactionResponse } from "@ethersproject/abstract-provider";
 import { simpleVarCheckValue, mapVarCheckValue } from "./common";
-import { Mod, Seeker } from "../typechain-types";
+import { CombatManager, Mod, Seeker } from "../typechain-types";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import * as circomlib from "circomlibjs";
 
@@ -35,13 +35,22 @@ export async function deployContracts(deployment: Deployment) {
 
     await seekerContract.setMaxSupply(1, 500).then(tx => tx.wait());
 
-    const modContract = await deployment.deploy( {
+    const modContract = await deployment.deploy({
         id: "mod",
         contract: "src/Mod.sol:Mod",
         autoUpdate: true,
     }) as Mod;
-
     await modContract.setSeekerContract(seekerContract.address).then(tx => tx.wait());
+
+    const combatManager = await deployment.deploy( 
+        {
+            id: "sessionManager",
+            contract: "src/combat/CombatManager.sol:CombatManager",
+            autoUpdate: true
+        },
+        seekerContract.address,
+        poseidonContract.address
+    ) as CombatManager;
 
     // const verifierWithHashContractArgs:any[] = [];
     // const verifierWithHashContract = await deployment.deploy( {
@@ -71,7 +80,8 @@ export async function deployContracts(deployment: Deployment) {
 
     return {
         seekerContract,
-        modContract
+        modContract,
+        combatManager
         // poseidonContract,
         // verifierWithHashContract,
         // verifierNoHashContract,

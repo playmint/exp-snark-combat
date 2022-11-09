@@ -8,7 +8,7 @@
     "test": "test"
   },
   "scripts": {
-    "test": "npx hardhat test",
+    "test": "NUM_SEEKERS=3 NUM_TICKS=100 npx hardhat test test/e2e.ts",
     "prettier": "prettier --write 'src/**/*.sol'",
     "lint": "prettier --list-different 'src/**/*.sol'"
   },

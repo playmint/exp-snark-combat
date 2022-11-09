@@ -6,6 +6,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "encoding/Base64.sol";
 
+import "./Types.sol";
+
 struct SeekerData {
     uint id;
     uint generation;
@@ -21,11 +23,6 @@ struct SeekerData {
     uint8 yieldBonus; // 9
     uint8 craftingSpeed; // 10
     uint8 modBonus; // 11
-}
-
-struct Position {
-    uint128 x;
-    uint128 y;
 }
 
 contract Seeker is ERC721Enumerable, Ownable {
@@ -121,6 +118,21 @@ contract Seeker is ERC721Enumerable, Ownable {
         return data;
     }
 
+    function getCombatData(
+        uint256 tokenId
+    )
+        public
+        view
+        returns (uint8 resonance, uint8 health, uint8 attack, uint8 criticalHit)
+    {
+        uint8[12] memory attrs = unpackAttrs(_attrs[tokenId]);
+
+        resonance = attrs[0];
+        health = attrs[1];
+        attack = attrs[2];
+        criticalHit = attrs[3];
+    }
+
     function setMaxSupply(
         uint256 generation,
         uint256 maxMintable
@@ -130,11 +142,13 @@ contract Seeker is ERC721Enumerable, Ownable {
     }
 
     // TODO: Only set by actions contract
-    function setPosition(uint256 seekerId, Position pos) public {
+    function setPosition(uint256 seekerId, Position memory pos) public {
         _position[seekerId] = pos;
     }
 
-    function getPosition(uint256 seekerId) public returns (Position memory) {
+    function getPosition(
+        uint256 seekerId
+    ) public view returns (Position memory) {
         return _position[seekerId];
     }
 }

@@ -37,7 +37,8 @@ interface IVerifierWithHash {
 
 enum ActionKind {
     JOIN,
-    LEAVE
+    LEAVE,
+    EQUIP
 }
 
 struct OffChainSlot {
@@ -497,26 +498,6 @@ contract Session {
     function getFreeSlotIDOffChainStorage() public view returns (uint, bool) {
         for (uint i=0; i<NUM_SEEKERS; i++) {
             if (offChainSlots[i].seekerID == 0) {
-                return (i, true);
-            }
-        }
-        return (0, false);
-    }
-
-    // getSlotID returns the slot index for the given seeker ID or -1 is not
-    function getSeekerSlotIDOnChainStorage(uint seekerID) public view returns (uint, bool) {
-        for (uint i=0; i<NUM_SEEKERS; i++) {
-            if (onChainSlots[i].seekerID == seekerID) {
-                return (i, true);
-            }
-        }
-        return (0, false);
-    }
-
-    // getFreeSlotID returns an available slot or -1 if full
-    function getFreeSlotIDOnChainStorage() public view returns (uint, bool) {
-        for (uint i=0; i<NUM_SEEKERS; i++) {
-            if (onChainSlots[i].seekerID == 0) {
                 return (i, true);
             }
         }

@@ -1,7 +1,6 @@
 import { expect } from 'chai';
 import { createDeployment, deployContracts } from "../scripts/deployContracts";
-import { Mod, Seeker } from "../typechain-types";
-import { ClaimProofStruct } from "../typechain-types/src/Session.sol/Session";
+import { CombatManager, CombatSession, Mod, Seeker } from "../typechain-types";
 import path from "path";
 import fs from "fs";
 import chai from "chai";
@@ -19,6 +18,7 @@ const provider = hre.ethers.provider;
 let signer:SignerWithAddress;
 let seekerContract:Seeker;
 let modContract:Mod;
+let combatManager:CombatManager;
 
 function env(key:string):string {
     const v = process.env[key];
@@ -64,43 +64,28 @@ enum GameObjectAttr {
     modBonus       // 11
 }
 
-enum ActionKind {
-    ENTER,
-    EQUIP,
-    DRINK,
-    LEAVE
+enum CombatAction {
+    JOIN,
+    LEAVE,
+    EQUIP
+}
+
+interface Position {
+    x: number;
+    y: number;
 }
 
 interface Slot {
+    seekerID: BigNumber;
+    claimed: number;
     hash: BigNumber;
-    seekerID: number;
-    configs: SlotConfig[];
+    configs: CombatSession.SlotConfigStructOutput[];
 }
-
-interface SlotConfig {
-  action: ActionKind;
-  tick: number;
-  hrv: number;
-  yldb: number;
-  end: number;
-};
-
 interface Claim {
     slot: number;
     tick: number;
     yields: any;
 }
-
-interface SessionState {
-    seekerCap: number;
-    // enduranceReq: number;
-    affinity: number;
-    // rewardSupply: number;
-    // bonusSupply: number;
-    startTick: number;
-    slots: Slot[];
-}
-
 interface CombatState {
     sessionArmour: number;
     sessionHealth: number;
@@ -122,7 +107,7 @@ describe('E2E', async function () {
         // keep the signer addr
         [signer] = await ethers.getSigners();
         // wait for contract deployment to complete
-        ({ seekerContract, modContract } = await deployContracts(deployment));
+        ({ seekerContract, modContract, combatManager } = await deployContracts(deployment));
         // mint n seekers
         for (let i=0; i<NUM_SEEKERS; i++) {
             await seekerContract.mint(
@@ -235,6 +220,20 @@ describe('E2E', async function () {
         expect(moddedStats[attackIndex]).to.be.gt(baseStats[attackIndex]);
     })
 
+    it("Should instantiate and join a session", async() => {
+        const pos = {x: 1024, y: 1024};
+
+        await combatManager.join(pos, 1).then(tx => tx.wait());
+        await combatManager.join(pos, 2).then(tx => tx.wait());
+        const sessionAddr = await combatManager.getSession(pos);
+        const session = await ethers.getContractAt("CombatSession", sessionAddr);
+        const startBlock = (await session.startBlock()).toNumber();
+
+        const state = await getSessionState(pos, startBlock);
+
+        console.log(`state:`, state.slots[0], state.slots[1]);
+    })
+
     // it("resetSession", async () => {
     //     const txs = [];
     //     txs.push(await sessionContract.resetSessionWithOffChainStorage(sessionCorruption));
@@ -306,27 +305,34 @@ describe('E2E', async function () {
 
 });
 
-async function getCurrentTick(): Promise<number> {
-    const session = await sessionContract.session();
+async function getCurrentTick(position: Position): Promise<number> {
+    const sessionAddr = await combatManager.getSession(position);
+    const session = await ethers.getContractAt("CombatSession", sessionAddr);
+    const startBlock = (await session.startBlock()).toNumber();
+
     const currentBlock = await provider.getBlockNumber();
-    return currentBlock - session.startTick;
+    return currentBlock - startBlock;
 }
 
-async function getSessionState(fromBlock: number): Promise<SessionState> {
+async function getSessionState(position: Position, fromBlock: number) {
     // fetch the session config
-    const session = await sessionContract.session();
+    const sessionAddr = await combatManager.getSession(position);
+    const session = await ethers.getContractAt("CombatSession", sessionAddr);
+
+    const startBlock = await session.startBlock();
+
     // fetch the occupied slots
-    const slots: Slot[] = [];
-    for (let i=0; i<NUM_SEEKERS; i++) {
-        const slot = await sessionContract.offChainSlots(i);
-        slots.push({
-            seekerID: slot.seekerID,
-            hash: slot.hash,
-            configs: [],
-        });
-    }
+    const slots = (await session.getSlots()).map( ({seekerID, claimed, hash}) => {
+        return {
+            seekerID,
+            claimed,
+            hash,
+            configs: []
+        } as Slot
+    })
+
     // fetch all the Action events
-    const events = await sessionContract.queryFilter(sessionContract.filters.SlotUpdated(), fromBlock, 50000);
+    const events = await session.queryFilter(session.filters.SlotUpdated(), fromBlock, 50000);
     // group the Actions by their seeker slot
     events.forEach(({blockNumber, args}) => {
         const [
@@ -337,60 +343,9 @@ async function getSessionState(fromBlock: number): Promise<SessionState> {
     });
 
     return {
-        seekerCap: session.seekerCap,
-        affinity: session.affinity,
-        startTick: session.startTick,
+        startBlock,
         slots,
     }
-}
-
-async function getClaimProof(cfgs: SlotConfig[][], tick:number, slot:number, prover:Prover): Promise<[Claim, ClaimProofStruct]> {
-        // console.log('actions', slots);
-        // expand each action to cover each tick
-        // (this is the input the circuit needs)
-        const inputs = await generateInputs(cfgs, tick, prover.withHashes);
-        console.log('circuit inputs ==>', inputs);
-        // evaluate the circuit / build proof to get the valid outputs
-        //
-        // witness
-        const wtns = {type: "mem"};
-        await snarkjs.wtns.calculate(inputs, prover.wasm, wtns);
-        // proof
-        const zkey_final = fs.readFileSync(prover.key);
-        const outputs = await snarkjs.groth16.prove(zkey_final, wtns);
-        // now we have the public signals and can build the current verified state
-        console.log('circuit outputs ==>', JSON.stringify(outputs.publicSignals));
-        // expect(
-        //     outputs.publicSignals.slice(0,claim.yields.length)
-        // ).to.equal(
-        //     claim.yields.map(n => n.toNumber())
-        // );
-        // [optionally] verify the proof locally
-        // const vKey = JSON.parse(fs.readFileSync(path.join("..", "verification_key.json")).toString());
-        // const verification = await snarkjs.groth16.verify(vKey, outputs.publicSignals, outputs.proof);
-        // expect(verification).to.be.true;
-        const proof = {
-            pi_a: [
-                outputs.proof.pi_a[0],
-                outputs.proof.pi_a[1],
-            ],
-            pi_b: [
-                [outputs.proof.pi_b[0][1], outputs.proof.pi_b[0][0]],
-                [outputs.proof.pi_b[1][1], outputs.proof.pi_b[1][0]],
-            ],
-            pi_c: [
-                outputs.proof.pi_c[0],
-                outputs.proof.pi_c[1],
-            ],
-        };
-        // construct the claim
-        const claim = {
-            tick,
-            slot,
-            yields: outputs.publicSignals.slice(0,NUM_SEEKERS),
-        };
-        // console.log('state', state);
-        return [claim, proof as ClaimProofStruct];
 }
 
 async function generateInputs(cfgs:SlotConfig[][], currentTick:number, withHashes:boolean) {
@@ -441,13 +396,3 @@ async function generateInputs(cfgs:SlotConfig[][], currentTick:number, withHashe
 
     return inputs;
 }
-
-function packSlotConfig(cfg:SlotConfig) {
-    return BigInt(0)
-        | (BigInt(cfg.action) << BigInt(8))
-        | (BigInt(cfg.tick) << BigInt(21))
-        | (BigInt(cfg.hrv) << BigInt(34))
-        | (BigInt(cfg.yldb) << BigInt(47))
-        | (BigInt(cfg.end) << BigInt(60));
-}
-
