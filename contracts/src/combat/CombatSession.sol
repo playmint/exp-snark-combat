@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.11;
 
+import "@openzeppelin/contracts/access/Ownable.sol";
+
 import "../Seeker.sol";
 
 uint constant SEEKER_CAP = 3; // CONFIG:SEEKER_CAP
@@ -12,7 +14,7 @@ interface IPoseidonHasher {
     ) external pure returns (uint256 out);
 }
 
-contract CombatSession {
+contract CombatSession is Ownable {
     enum CombatAction {
         JOIN,
         LEAVE,
@@ -77,14 +79,25 @@ contract CombatSession {
 
     // -- ACTIONS
 
-    // TODO: owner only (Which I think would be the CombatManager)
-    function join(uint seekerID) public {
+    function join(uint seekerID) onlyOwner public {
         (uint8 slotID, bool ok) = getSeekerSlotID(seekerID);
         if (!ok) {
             (slotID, ok) = getFreeSlotID();
             require(ok, "CombatSession::join: No slots available");
         }
 
+        updateSlot(slotID, seekerID, CombatAction.JOIN);
+    }
+
+    function leave(uint seekerID) onlyOwner public {
+        (uint8 slotID, bool ok) = getSeekerSlotID(seekerID);
+
+        require(ok, "CombatSession::leave: Seeker not found");
+
+        updateSlot(slotID, seekerID, CombatAction.LEAVE);
+    }
+
+    function updateSlot(uint8 slotID, uint seekerID, CombatAction action) private {
         // Check if session is valid. More to do around this regarding regen
         uint tick = block.number - startBlock;
         require(
@@ -100,7 +113,7 @@ contract CombatSession {
         ) = seekerContract.getCombatData(seekerID);
 
         SlotConfig memory cfg = SlotConfig({
-            action: CombatAction.JOIN,
+            action: action,
             tick: uint8(tick),
             resonance: resonance,
             health: health,

@@ -11,6 +11,7 @@ import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
 import { TransactionResponse } from '@ethersproject/abstract-provider';
 import * as snarkjs from "snarkjs";
 import * as circomlib from "circomlibjs";
+import { json } from 'hardhat/internal/core/params/argumentTypes';
 
 const deployment = createDeployment(hre);
 const provider = hre.ethers.provider;
@@ -79,24 +80,39 @@ interface Slot {
     seekerID: BigNumber;
     claimed: number;
     hash: BigNumber;
-    configs: CombatSession.SlotConfigStructOutput[];
+    configs: SlotConfig[];
 }
-interface Claim {
-    slot: number;
+
+interface SlotConfig {
+    action: number;
     tick: number;
-    yields: any;
+    resonance: number;
+    health: number;
+    attack: number;
+    criticalHit: number;
 }
-interface CombatState {
-    sessionArmour: number;
-    sessionHealth: number;
-    seekerArmour: number;
-    seekerHealth: number;
-    slot: number;
-    tick: number;
-    pi_a: number[];
-    pi_b: number[][];
-    pi_c: number[];
-};
+
+interface SessionState {
+    startBlock: BigNumber,
+    slots: Slot[],
+}
+
+// interface Claim {
+//     slot: number;
+//     tick: number;
+//     yields: any;
+// }
+// interface CombatState {
+//     sessionArmour: number;
+//     sessionHealth: number;
+//     seekerArmour: number;
+//     seekerHealth: number;
+//     slot: number;
+//     tick: number;
+//     pi_a: number[];
+//     pi_b: number[][];
+//     pi_c: number[];
+// };
 
 
 describe('E2E', async function () {
@@ -221,61 +237,63 @@ describe('E2E', async function () {
     })
 
     it("Should instantiate and join a session", async() => {
+        // manual mining mode
+        await ethers.provider.send("evm_setAutomine", [false]);
+
         const pos = {x: 1024, y: 1024};
 
-        await combatManager.join(pos, 1).then(tx => tx.wait());
-        await combatManager.join(pos, 2).then(tx => tx.wait());
+        const txs: any = [];
+        txs.push(await combatManager.join(pos, 1)); //.then(tx => tx.wait());
+        txs.push(await combatManager.join(pos, 2)); //.then(tx => tx.wait());
+        txs.push(await combatManager.join(pos, 3)); //.then(tx => tx.wait());
+
+        await mine(txs);
+
         const sessionAddr = await combatManager.getSession(pos);
+        expect(sessionAddr, "Expected session contract to be instantiated").to.not.eq("0x0000000000000000000000000000000000000000");
+
         const session = await ethers.getContractAt("CombatSession", sessionAddr);
         const startBlock = (await session.startBlock()).toNumber();
 
         const state = await getSessionState(pos, startBlock);
 
-        console.log(`state:`, state.slots[0], state.slots[1]);
+        // console.log(`state:`, state.slots[0], state.slots[1], state.slots[2]);
+
+        expect(state.slots[1].configs[0].tick, "Expect last two joiners to join on the same tick").to.eq(state.slots[2].configs[0].tick)
     })
 
-    // it("resetSession", async () => {
-    //     const txs = [];
-    //     txs.push(await sessionContract.resetSessionWithOffChainStorage(sessionCorruption));
-    //     txs.push(await sessionContract.resetSessionWithOnChainStorage(sessionCorruption));
-    //     await mine(txs);
-    // });
+    it("Seeker that leaves before the others should get a lower yield", async() => {
+        const pos = {x: 1024, y: 1024};
+        
+        for (var i = 0; i < 10; i++) {
+            await ethers.provider.send("evm_mine", []);
+        }
 
-    // it("note session start block", async () => {
-    //     sessionStartBlock = await provider.getBlockNumber();
-    // });
+        const txs: any = [];
+        txs.push(await combatManager.leave(pos, 3));
+        await mine(txs);
 
-    // it("joinSession", async () => {
-    //     const txs = [];
-    //     for (let seekerID=1; seekerID<=NUM_SEEKERS; seekerID++) {
-    //         txs.push(await sessionContract.joinSessionWithOffChainStorage(seekerID));
-    //         txs.push(await sessionContract.joinSessionWithOnChainStorage(seekerID));
-    //     }
-    //     await mine(txs);
-    // });
+        for (var i = 0; i < NUM_TICKS; i++) {
+            await ethers.provider.send("evm_mine", []);
+        }
 
-    // it("modSession", async () => {
-    //     for (let a=0; a<NUM_ACTIONS; a++) {
-    //         const txs = [];
-    //         for (let seekerID=1; seekerID<=NUM_SEEKERS; seekerID++) {
-    //             txs.push(await sessionContract.modSessionWithOffChainStorage(seekerID));
-    //             txs.push(await sessionContract.modSessionWithOnChainStorage(seekerID));
-    //         }
-    //         await mine(txs);
-    //     }
-    // });
+        // -- Get state
+        const sessionAddr = await combatManager.getSession(pos);
+        const session = await ethers.getContractAt("CombatSession", sessionAddr);
+        const startBlock = (await session.startBlock()).toNumber();
+        const state = await getSessionState(pos, startBlock);
 
-    // it("should fast forward to NUM_TICKS blocks", async () => {
-    //     const isPastLastTick = async ():Promise<boolean> => {
-    //         const currentBlock = await provider.getBlockNumber();
-    //         return (currentBlock - sessionStartBlock) > (NUM_TICKS+1);
-    //     }
-    //     while (!(await isPastLastTick())) {
-    //         await mine([]);
-    //     }
-    //     // reenable auto-mine from this point
-    //     await ethers.provider.send("evm_setAutomine", [true]);
-    // });
+        console.log(`state:`, state.slots[0], state.slots[1], state.slots[2]);
+
+        const explodedState = explodeState(state, NUM_TICKS);
+
+        // -- Check exploded state
+        state.slots[2].configs.forEach( config => {
+            expect(config, "Expected config WITH tick to match exploded config AT tick").to.eq(explodedState.slots[2].configs[config.tick]);
+        })
+
+        
+    })
 
     // // THIS ONE
     // it("claimWithOnChainCalcOffChainStorage", async () => {
@@ -314,7 +332,7 @@ async function getCurrentTick(position: Position): Promise<number> {
     return currentBlock - startBlock;
 }
 
-async function getSessionState(position: Position, fromBlock: number) {
+async function getSessionState(position: Position, fromBlock: number): Promise<SessionState> {
     // fetch the session config
     const sessionAddr = await combatManager.getSession(position);
     const session = await ethers.getContractAt("CombatSession", sessionAddr);
@@ -346,6 +364,37 @@ async function getSessionState(position: Position, fromBlock: number) {
         startBlock,
         slots,
     }
+}
+
+// Creats a slot config for every tick
+function explodeState(sessionState: SessionState, numTicks: number): SessionState {
+    
+    const slots: Slot[] = sessionState.slots.map( slot => {
+        var explodedSlot = {} as Slot;
+        explodedSlot.seekerID = slot.seekerID;
+        explodedSlot.claimed = slot.claimed;
+        explodedSlot.hash = slot.hash;
+
+        explodedSlot.configs = Array(numTicks).fill({
+            action: 0,
+            tick: 0,
+            resonance: 0,
+            health: 0,
+            attack: 0,
+            criticalHit: 0
+        });
+
+        slot.configs.forEach( config => {
+            explodedSlot.configs.fill(config, config.tick, numTicks);
+        });
+
+        return explodedSlot;
+    });
+
+    return {
+        startBlock: sessionState.startBlock,
+        slots: slots
+    };
 }
 
 async function generateInputs(cfgs:SlotConfig[][], currentTick:number, withHashes:boolean) {

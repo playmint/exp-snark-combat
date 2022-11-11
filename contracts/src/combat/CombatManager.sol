@@ -5,6 +5,9 @@ import "../Types.sol";
 
 import "./CombatSession.sol";
 
+/**
+ * Keeps instantiates and keeps track of sessions
+ */
 contract CombatManager {
     mapping(uint256 => CombatSession) public _combatSessions;
 
@@ -56,7 +59,7 @@ contract CombatManager {
             "CombatManager::leave: No session found with key"
         );
 
-        // session.leave(seekerID);
+        session.leave(seekerID);
     }
 
     function getSession(
