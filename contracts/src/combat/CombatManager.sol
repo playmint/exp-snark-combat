@@ -29,20 +29,7 @@ contract CombatManager {
             session = new CombatSession(
                 seekerContract,
                 hasher,
-                CombatSession.CombatTileData({
-                    resonance: 0,
-                    health: 255,
-                    attack: 1,
-                    sessionReward: address(0),
-                    sessionSupply: 500,
-                    bonusReward: address(0),
-                    bonusSupply: 500,
-                    sessionDuration: 100, // Would this be passed in as data?
-                    regenDuration: 50,
-                    maxRespawn: 5,
-                    respawnSupplyDecayPerc: 10,
-                    minDecayedSupply: 10
-                })
+                getTileData(pos)
             );
             _combatSessions[sessionKey] = session;
         }
@@ -71,6 +58,26 @@ contract CombatManager {
 
     function getSessionKey(Position memory pos) public pure returns (uint256) {
         return (uint256(pos.x) << 128) | pos.y;
+    }
+
+    function getTileData(
+        Position memory pos
+    ) public pure returns (CombatSession.CombatTileData memory) {
+        return
+            CombatSession.CombatTileData({
+                resonance: 0,
+                health: 1000,
+                attack: 1,
+                sessionReward: address(0),
+                sessionSupply: 500,
+                bonusReward: address(0),
+                bonusSupply: 100,
+                sessionDuration: 100, // Would this be passed in as data?
+                regenDuration: 50,
+                maxRespawn: 5,
+                respawnSupplyDecayPerc: 10,
+                minDecayedSupply: 10
+            });
     }
 
     // function _joinSession(

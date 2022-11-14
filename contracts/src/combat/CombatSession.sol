@@ -79,7 +79,7 @@ contract CombatSession is Ownable {
 
     // -- ACTIONS
 
-    function join(uint seekerID) onlyOwner public {
+    function join(uint seekerID) public onlyOwner {
         (uint8 slotID, bool ok) = getSeekerSlotID(seekerID);
         if (!ok) {
             (slotID, ok) = getFreeSlotID();
@@ -89,7 +89,7 @@ contract CombatSession is Ownable {
         updateSlot(slotID, seekerID, CombatAction.JOIN);
     }
 
-    function leave(uint seekerID) onlyOwner public {
+    function leave(uint seekerID) public onlyOwner {
         (uint8 slotID, bool ok) = getSeekerSlotID(seekerID);
 
         require(ok, "CombatSession::leave: Seeker not found");
@@ -97,7 +97,11 @@ contract CombatSession is Ownable {
         updateSlot(slotID, seekerID, CombatAction.LEAVE);
     }
 
-    function updateSlot(uint8 slotID, uint seekerID, CombatAction action) private {
+    function updateSlot(
+        uint8 slotID,
+        uint seekerID,
+        CombatAction action
+    ) private {
         // Check if session is valid. More to do around this regarding regen
         uint tick = block.number - startBlock;
         require(
@@ -129,6 +133,115 @@ contract CombatSession is Ownable {
         emit SlotUpdated(slotID, cfg);
     }
 
+    // --  YIELD / CLAIM
+
+    function getSlotYieldsWithOffChainStorage(
+        uint terminalTick,
+        SlotConfig[][] calldata cfgs
+    ) public view returns (uint[SEEKER_CAP] memory yields) {
+        uint t;
+        uint s;
+        uint r;
+        uint y;
+        uint a;
+
+        CombatTileData memory _tileData = tileData; // Aliased to minimise storage reads
+        uint rewardSupply = _tileData.sessionSupply; // TODO: Decay
+        uint enemyHealth = _tileData.health;
+        uint[SEEKER_CAP] memory enemyDamage;
+
+        uint[SEEKER_CAP] memory actionIndex;
+        uint[SEEKER_CAP] memory seekerDamage;
+
+        // apply state transition calculation for each tick
+        for (t = 0; t < NUM_TICKS; t++) {
+            r = rollD100(t); // TODO: Roll for each seeker not each tick
+            for (s = 0; s < SEEKER_CAP; s++) {
+                // stop process if enemy dead
+                if (enemyHealth == 0) {
+                    break;
+                }
+
+                // Slot empty so skip
+                if (cfgs[s].length == 0) {
+                    break;
+                }
+
+                // No action occurring on this tick
+                if (t < cfgs[s][actionIndex[s]].tick) {
+                    continue;
+                }
+
+                // pick correct action state for t
+                while (
+                    actionIndex[s] + 1 < cfgs[s].length &&
+                    t >= cfgs[s][actionIndex[s] + 1].tick
+                ) {
+                    actionIndex[s] += 1;
+                }
+
+                if (cfgs[s][actionIndex[s]].action == CombatAction.LEAVE) {
+                    continue;
+                }
+
+                // tile does "damage" to seeker
+                if (seekerDamage[s] < cfgs[s][actionIndex[s]].health) {
+                    seekerDamage[s] += _tileData.attack;
+                }
+
+                // Seeker dead
+                if (seekerDamage[s] >= cfgs[s][actionIndex[s]].health) {
+                    continue;
+                }
+
+                // -- Calc seeker attack
+
+                a = cfgs[s][actionIndex[s]].attack;
+
+                // Attack bonus on critical hit
+                if (r < cfgs[s][actionIndex[s]].criticalHit) {
+                    a += a;
+                }
+                // ensure attack is not larger than remaining enemy health
+                a = min(enemyHealth, a);
+
+                enemyHealth -= a;
+
+                // Keep track of how much damage each seeker dealth as this is used to work out yield
+                enemyDamage[s] += a;
+            }
+
+            // stop processing after t
+            if (t == terminalTick) {
+                break;
+            }
+
+            // stop process if enemy dead
+            if (enemyHealth == 0) {
+                break;
+            }
+        }
+
+        // Calc yield and count participants
+        uint numParticipants;
+        for (s = 0; s < SEEKER_CAP; s++) {
+            if (enemyDamage[s] > 0) {
+                numParticipants++;
+                yields[s] = ((enemyDamage[s] * 100) / _tileData.health * rewardSupply) / 100;
+            }
+        }
+
+        // If enemy defeated then award bonus
+        if (enemyHealth == 0) {
+            // Would this be a problem when converting to circuit?
+            for (s = 0; s < numParticipants; s++) {
+                yields[s] += _tileData.bonusSupply / numParticipants; // TODO: Decayed bonus?
+            }
+        }
+
+        return yields;
+    }
+
     // -- SLOT GETTERS
 
     function getSeekerSlotID(uint seekerID) public view returns (uint8, bool) {
@@ -155,49 +268,11 @@ contract CombatSession is Ownable {
         return slots;
     }
 
-    // function getSlotYieldsWithOffChainStorage(uint t, SlotConfig[][] calldata cfgs) public view returns (uint[SEEKER_CAP] memory yields) {0
-    //     uint s;
-    //     uint i;
-    //     uint r;
-    //     uint y;
-    //     uint[SEEKER_CAP] memory actionIndex;
-    //     uint rewardSupply = session.rewardSupply;
-    //     uint[SEEKER_CAP] memory health;
-    //     // apply state transition calculation for each tick
-    //     for (i=0; i<NUM_TICKS; i++) {
-    //         r = rollD100(i);
-    //         for (s=0; s<SEEKER_CAP; s++) {
-    //             // pick correct action state for t
-    //             while (actionIndex[s]+1 < cfgs[s].length && i < cfgs[s][actionIndex[s]].tick && i >= cfgs[s][actionIndex[s]+1].tick) {
-    //                 actionIndex[s] += 1;
-    //             }
-    //             // tile does "damage" to seeker
-    //             health[s] = health[s] + 1; // TODO this is shared between all seekers
-    //             // calc yield for this tick for this seeker
-    //             y = cfgs[s][actionIndex[s]].hrv;
-    //             // calc yield bonus (if applicable)
-    //             if (r > 90) {
-    //                 y = cfgs[s][actionIndex[s]].yldb;
-    //             }
-    //             // ensure yield is not larger than remaining supply
-    //             y = min(rewardSupply, y);
-    //             // decrement y from the available session resources
-    //             rewardSupply -= y;
-    //             // yield is a rolling total, so add to previous tick
-    //             yields[s] += y;
-    //         }
-    //         // stop processing after t
-    //         if (i == t) {
-    //             break;
-    //         }
-    //     }
-
-    //     return yields;
-    // }
-
     // -- PACK / UNPACK
 
-    function packSlotConfig(SlotConfig memory config) public pure returns (uint256) {
+    function packSlotConfig(
+        SlotConfig memory config
+    ) public pure returns (uint256) {
         return
             (uint256(config.action)) |
             (uint256(config.tick) << 8) |
@@ -220,4 +295,23 @@ contract CombatSession is Ownable {
                 criticalHit: uint8((configPacked >> 40) & 8)
             });
     }
+
+    // -- MATH
+
+    function min(uint256 a, uint256 b) public pure returns (uint256) {
+        return a < b ? a : b;
+    }
+
+    function max(uint256 a, uint256 b) public pure returns (uint256) {
+        return a > b ? a : b;
+    }
+
+    // -- RND
+
+    // FIXME: just hardcoding some "random" numbers for now
+    uint[NUM_TICKS] rand = [75,98,98,35,97,20,21,34,22,98,64,2,63,11,3,80,86,12,50,99,16,78,19,88,72,7,86,28,41,72,10,86,40,23,32,84,55,7,82,9,31,58,17,92,26,61,39,51,70,54,90,3,41,32,53,28,10,63,98,12,2,47,59,21,9,4,19,11,99,11,25,16,24,37,27,10,4,7,70,66,24,41,7,15,28,29,58,55,64,84,34,47,31,70,60,30,88,55,47,51]; // CONFIG:RAND
+    function rollD100(uint t) public view returns (uint) {
+        return rand[t];
+    }
+
 }
