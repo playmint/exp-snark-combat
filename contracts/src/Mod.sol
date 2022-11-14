@@ -34,13 +34,15 @@ contract Mod is ERC721Enumerable, Ownable {
     }
 
     function equip(uint256 seekerId, uint256 modId) public {
+        // Although tx.origin is frowned upon, seeing as both the Mod and the Seeker have to belong to origin and nothing
+        // gets sent to sender, should be safe and not be a phishing risk.
         require(
-            tx.origin == ownerOf(modId), // DANGER: using origin can open up contract to phishing attack.
+            tx.origin == ownerOf(modId),
             "Mod::equip: sender not owner of mod token"
         );
         require(_modToSeeker[modId] == 0, "Mod::equip: Mod already equipped");
         require(
-            tx.origin == _seekerContract.ownerOf(seekerId), // DANGER: using origin can open up contract to phishing attack.
+            tx.origin == _seekerContract.ownerOf(seekerId),
             "Mod::equip: sender not owner of seeker"
         );
 
@@ -50,7 +52,7 @@ contract Mod is ERC721Enumerable, Ownable {
 
     function unequip(uint256 seekerId, uint256 modId) public {
         require(
-            tx.origin == ownerOf(modId), // DANGER: using origin can open up contract to phishing attack.
+            tx.origin == ownerOf(modId),
             "Mod::unequip: sender not owner of mod token"
         );
         require(
