@@ -5,7 +5,8 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
-import "./Types.sol";
+import "./types/Position.sol";
+import "./enums/GameObjectAttr.sol";
 
 struct SeekerData {
     uint id;
@@ -42,7 +43,7 @@ contract Seeker is ERC721Enumerable, Ownable {
         address to,
         uint8 generation,
         uint8[12] memory attrs
-    ) public returns (uint256 tokenId) {
+    ) public onlyOwner returns (uint256 tokenId) {
         require(
             _totalMinted[generation] < _maxMintable[generation],
             "tokenId out of range for genesis"
@@ -126,10 +127,10 @@ contract Seeker is ERC721Enumerable, Ownable {
     {
         uint8[12] memory attrs = unpackAttrs(_attrs[tokenId]);
 
-        resonance = attrs[0];
-        health = attrs[1];
-        attack = attrs[2];
-        criticalHit = attrs[3];
+        resonance = attrs[uint(GameObjectAttr.resonance)];
+        health = attrs[uint(GameObjectAttr.health)];
+        attack = attrs[uint(GameObjectAttr.attack)];
+        criticalHit = attrs[uint(GameObjectAttr.criticalHit)];
     }
 
     function setMaxSupply(

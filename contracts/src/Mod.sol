@@ -13,21 +13,6 @@ struct ModData {
     uint8 value;
 }
 
-enum GameObjectAttr {
-    resonance, // 0
-    health, // 1
-    attack, // 2
-    criticalHit, // 3
-    agility, // 4
-    scout, // 5
-    capacity, // 6
-    endurance, // 7
-    harvest, // 8
-    yieldBonus, // 9
-    assemblySpeed, // 10
-    modBonus // 11
-}
-
 contract Mod is ERC721Enumerable, Ownable {
     uint256 public count;
     mapping(uint256 => ModData) public _tokenData;
@@ -40,7 +25,7 @@ contract Mod is ERC721Enumerable, Ownable {
 
     constructor() ERC721("Mod", "Mod") Ownable() {}
 
-    function setSeekerContract(Seeker seekerContract) public {
+    function setSeekerContract(Seeker seekerContract) onlyOwner public {
         _seekerContract = seekerContract;
     }
 
@@ -48,14 +33,14 @@ contract Mod is ERC721Enumerable, Ownable {
         return _exists(tokenId);
     }
 
-    function equip(uint256 modId, uint256 seekerId) public {
+    function equip(uint256 seekerId, uint256 modId) public {
         require(
-            _msgSender() == ownerOf(modId),
+            tx.origin == ownerOf(modId), // DANGER: using origin can open up contract to phishing attack.
             "Mod::equip: sender not owner of mod token"
         );
         require(_modToSeeker[modId] == 0, "Mod::equip: Mod already equipped");
         require(
-            _msgSender() == _seekerContract.ownerOf(seekerId),
+            tx.origin == _seekerContract.ownerOf(seekerId), // DANGER: using origin can open up contract to phishing attack.
             "Mod::equip: sender not owner of seeker"
         );
 
@@ -63,9 +48,9 @@ contract Mod is ERC721Enumerable, Ownable {
         _seekerToMods[seekerId].push(modId); // Should this be emitting an event instead of recording this on-chain?
     }
 
-    function unequip(uint256 modId, uint256 seekerId) public {
+    function unequip(uint256 seekerId, uint256 modId) public {
         require(
-            _msgSender() == ownerOf(modId),
+            tx.origin == ownerOf(modId), // DANGER: using origin can open up contract to phishing attack.
             "Mod::unequip: sender not owner of mod token"
         );
         require(
@@ -73,7 +58,7 @@ contract Mod is ERC721Enumerable, Ownable {
             "Mod::unequip: Mod not equipped to seeker"
         );
         require(
-            _msgSender() == _seekerContract.ownerOf(seekerId),
+            tx.origin == _seekerContract.ownerOf(seekerId), // DANGER: using origin can open up contract to phishing attack.
             "Mod::unequip: sender not owner of seeker"
         );
 
@@ -102,7 +87,7 @@ contract Mod is ERC721Enumerable, Ownable {
         address to,
         GameObjectAttr attr,
         uint8 value
-    ) public returns (uint256 tokenId) {
+    ) public onlyOwner returns (uint256 tokenId) {
         count++;
         tokenId = count;
         _tokenData[tokenId] = ModData(tokenId, attr, value);
@@ -127,5 +112,20 @@ contract Mod is ERC721Enumerable, Ownable {
         }
 
         return attrs;
+    }
+
+    function getModdedCombatData(
+        uint256 seekerId
+    )
+        public
+        view
+        returns (uint8 resonance, uint8 health, uint8 attack, uint8 criticalHit)
+    {
+        uint8[12] memory attrs = getModdedSeekerAttrs(seekerId);
+
+        resonance = attrs[uint(GameObjectAttr.resonance)];
+        health = attrs[uint(GameObjectAttr.health)];
+        attack = attrs[uint(GameObjectAttr.attack)];
+        criticalHit = attrs[uint(GameObjectAttr.criticalHit)];
     }
 }

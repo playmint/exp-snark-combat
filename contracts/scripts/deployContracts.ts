@@ -49,6 +49,7 @@ export async function deployContracts(deployment: Deployment) {
             autoUpdate: true
         },
         seekerContract.address,
+        modContract.address,
         poseidonContract.address
     ) as CombatManager;
 

@@ -3,7 +3,7 @@ pragma solidity ^0.8.11;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-import "../Seeker.sol";
+import "../Mod.sol";
 
 uint constant SEEKER_CAP = 3; // CONFIG:SEEKER_CAP
 uint constant NUM_TICKS = 100; // CONFIG:NUM_TICKS
@@ -56,7 +56,7 @@ contract CombatSession is Ownable {
 
     // --- CONTRACT PROPERTIES
 
-    Seeker seekerContract;
+    Mod modContract;
     IPoseidonHasher hasher;
 
     CombatTileData public tileData;
@@ -66,11 +66,11 @@ contract CombatSession is Ownable {
     // ---- //
 
     constructor(
-        Seeker _seekerContract,
+        Mod _modContract,
         IPoseidonHasher _hasherContract,
         CombatTileData memory _tileData
     ) {
-        seekerContract = _seekerContract;
+        modContract = _modContract;
         hasher = _hasherContract;
 
         tileData = _tileData;
@@ -92,9 +92,17 @@ contract CombatSession is Ownable {
     function leave(uint seekerID) public onlyOwner {
         (uint8 slotID, bool ok) = getSeekerSlotID(seekerID);
 
-        require(ok, "CombatSession::leave: Seeker not found");
+        require(ok == true, "CombatSession::leave: Seeker not found");
 
         updateSlot(slotID, seekerID, CombatAction.LEAVE);
+    }
+
+    function equip(uint seekerID) public onlyOwner {
+        (uint8 slotID, bool ok) = getSeekerSlotID(seekerID);
+
+        require(ok == true, "CombatSession::equip: Seeker not found");
+
+        updateSlot(slotID, seekerID, CombatAction.EQUIP);
     }
 
     function updateSlot(
@@ -114,7 +122,7 @@ contract CombatSession is Ownable {
             uint8 health,
             uint8 attack,
             uint8 criticalHit
-        ) = seekerContract.getCombatData(seekerID);
+        ) = modContract.getModdedCombatData(seekerID);
 
         SlotConfig memory cfg = SlotConfig({
             action: action,
@@ -142,7 +150,6 @@ contract CombatSession is Ownable {
         uint t;
         uint s;
         uint r;
-        uint y;
         uint a;
 
         CombatTileData memory _tileData = tileData; // Aliased to minimise storage reads
@@ -227,7 +234,7 @@ contract CombatSession is Ownable {
         for (s = 0; s < SEEKER_CAP; s++) {
             if (enemyDamage[s] > 0) {
                 numParticipants++;
-                yields[s] = ((enemyDamage[s] * 100) / _tileData.health * rewardSupply) / 100;
+                yields[s] = ((enemyDamage[s] * 1000) / _tileData.health * rewardSupply) / 1000;
             }
         }
 

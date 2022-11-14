@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.11;
 
-import "../Types.sol";
+import "../types/Position.sol";
+import "../Seeker.sol";
+import "../Mod.sol";
 
 import "./CombatSession.sol";
 
@@ -12,11 +14,13 @@ contract CombatManager {
     mapping(uint256 => CombatSession) public _combatSessions;
 
     Seeker seekerContract;
+    Mod modContract;
     IPoseidonHasher hasher;
 
-    constructor(address _seekerContractAddr, address _hasherContractAddr) {
-        seekerContract = Seeker(_seekerContractAddr);
-        hasher = IPoseidonHasher(_hasherContractAddr);
+    constructor(Seeker _seekerContract, Mod _modContract, IPoseidonHasher _hasherContractAddr) {
+        seekerContract = _seekerContract;
+        modContract = _modContract;
+        hasher = _hasherContractAddr;
     }
 
     function join(Position memory pos, uint256 seekerID) public {
@@ -27,7 +31,7 @@ contract CombatManager {
 
         if (address(session) == address(0)) {
             session = new CombatSession(
-                seekerContract,
+                modContract,
                 hasher,
                 getTileData(pos)
             );
@@ -47,6 +51,20 @@ contract CombatManager {
         );
 
         session.leave(seekerID);
+    }
+
+    function equip(Position memory pos, uint seekerID, uint modID) public {
+        modContract.equip(seekerID, modID);
+        
+        uint sessionKey = getSessionKey(pos);
+        CombatSession session = _combatSessions[sessionKey];
+
+        require(
+            address(session) != address(0),
+            "CombatManager::leave: No session found with key"
+        );
+
+        session.equip(seekerID);
     }
 
     function getSession(
