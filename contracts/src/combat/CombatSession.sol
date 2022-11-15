@@ -25,12 +25,12 @@ contract CombatSession is Ownable {
         uint16 resonance;
         uint16 health;
         uint16 attack;
-        address sessionReward;
-        uint256 sessionSupply;
+        address sessionReward; // TODO: support multiple rewards
+        uint256 sessionSupply; // TODO: should this be uint16 to match yield
         address bonusReward;
-        uint256 bonusSupply;
-        uint8 sessionDuration;
-        uint256 regenDuration;
+        uint256 bonusSupply;  // TODO: should this be uint16 to match yield
+        uint8 sessionDuration;  // TODO: not currently referenced. Could this be below NUM_TICKS? Cannot be above
+        uint256 regenDuration; // TODO: Measured in blocks? ticks?
         uint256 maxRespawn;
         uint8 respawnSupplyDecayPerc;
         uint256 minDecayedSupply;
@@ -52,10 +52,19 @@ contract CombatSession is Ownable {
         uint8 criticalHit; // 3
     }
 
+    struct Claim {
+        uint8 slot;
+        uint8 tick;
+        uint16[SEEKER_CAP] yields;
+    }
+
+    // -- EVENTS
+
     event SlotUpdated(uint8 slotID, SlotConfig cfg);
 
     // --- CONTRACT PROPERTIES
 
+    Seeker seekerContract;
     Mod modContract;
     IPoseidonHasher hasher;
 
@@ -66,10 +75,12 @@ contract CombatSession is Ownable {
     // ---- //
 
     constructor(
+        Seeker _seekerContract,
         Mod _modContract,
         IPoseidonHasher _hasherContract,
         CombatTileData memory _tileData
     ) {
+        seekerContract = _seekerContract;
         modContract = _modContract;
         hasher = _hasherContract;
 
@@ -141,12 +152,12 @@ contract CombatSession is Ownable {
         emit SlotUpdated(slotID, cfg);
     }
 
-    // --  YIELD / CLAIM
+    // --  YIELD
 
-    function getSlotYieldsWithOffChainStorage(
+    function getSlotYields(
         uint terminalTick,
         SlotConfig[][] calldata cfgs
-    ) public view returns (uint[SEEKER_CAP] memory yields) {
+    ) public view returns (uint16[SEEKER_CAP] memory yields) {
         uint t;
         uint s;
         uint r;
@@ -234,7 +245,7 @@ contract CombatSession is Ownable {
         for (s = 0; s < SEEKER_CAP; s++) {
             if (enemyDamage[s] > 0) {
                 numParticipants++;
-                yields[s] = ((enemyDamage[s] * 1000) / _tileData.health * rewardSupply) / 1000;
+                yields[s] = uint16(((enemyDamage[s] * 1000) / _tileData.health * rewardSupply) / 1000);
             }
         }
 
@@ -242,11 +253,87 @@ contract CombatSession is Ownable {
         if (enemyHealth == 0) {
             // Would this be a problem when converting to circuit?
             for (s = 0; s < numParticipants; s++) {
-                yields[s] += _tileData.bonusSupply / numParticipants; // TODO: Decayed bonus?
+                yields[s] += uint16(_tileData.bonusSupply / numParticipants); // TODO: Decayed bonus?
             }
         }
 
         return yields;
+    }
+
+    // -- CLAIM
+
+    function claimReward(Claim calldata claim, SlotConfig[][] calldata cfgs) public {
+        // validate claim
+        require(verifyGenericClaims(claim.slot, claim.tick), 'CombatSession::claim: Invalid claim args');
+        require(verifyState(claim, cfgs), 'CombatSession::claim: Invalid claim state');
+        // claim
+        uint16 claimValue = claimableYield(claim.yields[claim.slot], slots[claim.slot].claimed);
+        slots[claim.slot].claimed += claimValue;
+        // TODO: mint
+        // IResource(tileData.sessionReward).mint(tx.origin, claimValue, data);
+    }
+
+    // verifyGenericClaims are things that need to be validated regardless if on or off chain
+    function verifyGenericClaims(uint slotID, uint tick) private view returns (bool) {
+        // find the seekerID from the given slotID
+        uint seekerID = slots[slotID].seekerID;
+        // ensure there is a seeker in the slot
+        require(seekerID != 0, 'CombatSession::verifyGenericClaims: no seeker in slot');
+        // ensure sender is owner of seeker in slot
+        require(seekerContract.ownerOf(seekerID) == tx.origin, 'CombatSession::verifyGenericClaims: not owner of seeker in slot');
+        // check the given tick is in the past
+        require(tick <= block.number - startBlock, 'CombatSession::verifyGenericClaims: cannot claim from the future');
+        // ok
+        return true;
+    }
+
+    // Compares the supplied yield with a computed yield and verifies the state hash match
+    function verifyState(Claim calldata claim, SlotConfig[][] calldata cfgs) public view returns (bool) {
+        uint h;
+        // calc the yields for the requested tick and cfg
+        uint16[SEEKER_CAP] memory yields = getSlotYields(claim.tick, cfgs);
+        // verify the given slot configs match the commited hashes
+        for (uint s=0; s<SEEKER_CAP; s++) {
+            h = 0;
+            for (uint i=0; i<cfgs[s].length; i++) {
+                h = hasher.poseidon([
+                    h,
+                    packSlotConfig(cfgs[s][i])
+                ]);
+            }
+            require(h == slots[s].hash, 'CombatSession::verifyStateOnChain: unverified action data');
+            // verify that the supplied claim yields match the calculated yields
+            require(claim.yields[s] == yields[s], 'CombatSession::verifyStateOnChain: unverified yields');
+        }
+        // ok
+        return true;
+    }
+
+    // -- TODO: verify state using a proof instead of calculating the yields on-chain as we do above
+    // function verifyState(Claim calldata claim, ClaimProof memory proof) public view returns (bool) {
+    //     uint[NUM_VERIFIER_INPUTS] memory input;
+    //     uint i = 0;
+    //     uint s;
+    //     for (s=0; s<SEEKER_CAP; s++) {
+    //         input[i] = claim.yields[s];
+    //         i++;
+    //     }
+    //     for (s=0; s<SEEKER_CAP; s++) {
+    //         input[i] = slots[s].hash;
+    //         i++;
+    //     }
+    //     input[i] = claim.tick;
+    //     i++;
+    //     input[i] = tileData.sessionSupply;
+    //     return verifierContract.verifyProof(proof.pi_a, proof.pi_b, proof.pi_c, input);
+    // }
+
+    // calc the claimable yield, since we may have already claimed some
+    function claimableYield(uint16 yield, uint16 claimed) private pure returns (uint16 claimable) {
+        claimable = yield;
+        if (yield > 0 && yield >= claimed) {
+            claimable = yield - claimed;
+        }
     }
 
     // -- SLOT GETTERS

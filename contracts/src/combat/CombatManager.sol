@@ -23,6 +23,8 @@ contract CombatManager {
         hasher = _hasherContractAddr;
     }
 
+    // -- ACTIONS
+
     function join(Position memory pos, uint256 seekerID) public {
         // TODO: assert that the tile at position is an enemy tile
 
@@ -31,6 +33,7 @@ contract CombatManager {
 
         if (address(session) == address(0)) {
             session = new CombatSession(
+                seekerContract,
                 modContract,
                 hasher,
                 getTileData(pos)
@@ -67,6 +70,8 @@ contract CombatManager {
         session.equip(seekerID);
     }
 
+    // -- GETTERS
+
     function getSession(
         Position memory pos
     ) public view returns (CombatSession) {
@@ -79,7 +84,7 @@ contract CombatManager {
     }
 
     function getTileData(
-        Position memory pos
+        Position memory /*pos*/
     ) public pure returns (CombatSession.CombatTileData memory) {
         return
             CombatSession.CombatTileData({
@@ -98,28 +103,5 @@ contract CombatManager {
             });
     }
 
-    // function _joinSession(
-    //     uint8 seekerID
-    // ) private view returns (SlotConfig memory) {
-    //     // ensure sender owns seeker
-    //     require(seekerContract.ownerOf(seekerID) == tx.origin, 'not your seeker');
-    //     // get the stats values
-    //     uint8[8] memory attrs = seekerContract.getAttrs(seekerID);
-    //     // calc affinity bonus to hrv
-    //     // TODO: is corruption the right stat here?
-    //     uint8 hrv = (attrs[2]+8) + uint8(9 - (
-    //         max(attrs[7], session.affinity)
-    //         -
-    //         min(attrs[7], session.affinity)
-    //     ));
-    //     require(block.number - session.startTick <= NUM_TICKS, 'session ended');
-    //     // build slot config
-    //     return SlotConfig({
-    //         action: ActionKind.JOIN,
-    //         tick: uint8(block.number - session.startTick),
-    //         hrv: hrv, // TODO: update seeker stats
-    //         yldb: 5, // TODO: what modifies this?
-    //         end: 100
-    //     });
-    // }
+
 }

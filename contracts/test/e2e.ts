@@ -93,7 +93,7 @@ interface SlotConfig {
 }
 
 interface SessionState {
-    startBlock: BigNumber,
+    startBlock: number,
     slots: Slot[],
 }
 
@@ -255,13 +255,7 @@ describe('E2E', async function () {
 
         await mine(txs);
 
-        const sessionAddr = await combatManager.getSession(pos);
-        expect(sessionAddr, "Expected session contract to be instantiated").to.not.eq("0x0000000000000000000000000000000000000000");
-
-        const session = await ethers.getContractAt("CombatSession", sessionAddr);
-        const startBlock = (await session.startBlock()).toNumber();
-
-        const state = await getSessionState(pos, startBlock);
+        const state = await getSessionState(pos);
 
         // console.log(`state:`, state.slots[0], state.slots[1], state.slots[2]);
 
@@ -280,20 +274,19 @@ describe('E2E', async function () {
             [await combatManager.leave(pos, 3)]
         );
 
-        // Get state
-        const sessionAddr = await combatManager.getSession(pos);
-        const session = await ethers.getContractAt("CombatSession", sessionAddr);
-        const startBlock = (await session.startBlock()).toNumber();
+        // Get session
+        const {
+            session,
+            startBlock
+        } = await getSession(pos);
+
         const state = await getSessionState(pos, startBlock);
 
         // console.log(`state:`, state.slots[0], state.slots[1], state.slots[2]);
 
-        const configs:SlotConfig[][] = new Array(NUM_SEEKERS);
-        for (let s=0; s<NUM_SEEKERS; s++) {
-            configs[s] = state.slots[s].configs;
-        }
+        const configs = state.slots.map(slot => slot.configs);
 
-        const yields = await session.getSlotYieldsWithOffChainStorage(NUM_TICKS, configs);
+        const yields = await session.getSlotYields(NUM_TICKS, configs);
         // console.log(`yield:`, yields);
         
     });
@@ -302,22 +295,20 @@ describe('E2E', async function () {
         const pos = {x: 1024, y: 1024};
 
         // Get session
-        const sessionAddr = await combatManager.getSession(pos);
-        const session = await ethers.getContractAt("CombatSession", sessionAddr);
-        const startBlock = (await session.startBlock()).toNumber();
+        const {
+            session,
+            startBlock,
+            currentTick
+        } = await getSession(pos);
         
         // State before equipping mod
         const stateBefore = await getSessionState(pos, startBlock);
-        const configsBefore:SlotConfig[][] = new Array(NUM_SEEKERS);
-        for (let s=0; s<NUM_SEEKERS; s++) {
-            configsBefore[s] = stateBefore.slots[s].configs;
-        }
-        const yieldsBefore = await session.getSlotYieldsWithOffChainStorage(NUM_TICKS, configsBefore);
+        const configsBefore = stateBefore.slots.map(slot => slot.configs);
+        const yieldsBefore = await session.getSlotYields(NUM_TICKS, configsBefore);
         // console.log(`yield before:`, yieldsBefore);
 
         // Mine to half way through battle
         const halfTime = Math.floor(NUM_TICKS / 2);
-        const currentTick = (await provider.getBlockNumber()) - startBlock;
 
         for (var i = 0; i < (halfTime - currentTick); i++) {
             await ethers.provider.send("evm_mine", []);
@@ -330,31 +321,27 @@ describe('E2E', async function () {
 
         // State after equipping mod
         const stateAfter = await getSessionState(pos, startBlock);
-        const configsAfter:SlotConfig[][] = new Array(NUM_SEEKERS);
-        for (let s=0; s<NUM_SEEKERS; s++) {
-            configsAfter[s] = stateAfter.slots[s].configs;
-        }
-        const yieldsAfter = await session.getSlotYieldsWithOffChainStorage(NUM_TICKS, configsAfter);
+        const configsAfter = stateAfter.slots.map(slot => slot.configs);
+        const yieldsAfter = await session.getSlotYields(NUM_TICKS, configsAfter);
         // console.log(`yield after:`, yieldsAfter);
 
-        expect(yieldsAfter[1].toNumber()).to.be.greaterThan(yieldsBefore[1].toNumber());
+        expect(yieldsAfter[1], 'Expected second seeker to have a higher yield than unmodded seeker').to.be.greaterThan(yieldsAfter[0]);
     });
 
     it("Defeating Enemy should yield bonus", async() => {
         const pos = {x: 1024, y: 1024};
 
         // Get session
-        const sessionAddr = await combatManager.getSession(pos);
-        const session = await ethers.getContractAt("CombatSession", sessionAddr);
-        const startBlock = (await session.startBlock()).toNumber();
+        const {
+            session,
+            startBlock,
+            currentTick
+        } = await getSession(pos);
         
         // State before equipping mod
         const stateBefore = await getSessionState(pos, startBlock);
-        const configsBefore:SlotConfig[][] = new Array(NUM_SEEKERS);
-        for (let s=0; s<NUM_SEEKERS; s++) {
-            configsBefore[s] = stateBefore.slots[s].configs;
-        }
-        const yieldsBefore = await session.getSlotYieldsWithOffChainStorage(NUM_TICKS, configsBefore);
+        const configsBefore = stateBefore.slots.map(slot => slot.configs);
+        const yieldsBefore = await session.getSlotYields(NUM_TICKS, configsBefore);
         // console.log(`yield before:`, yieldsBefore);
 
         // Equip mod (Equipped via combat manager so that event is sent)
@@ -363,15 +350,158 @@ describe('E2E', async function () {
         );
 
         const stateAfter = await getSessionState(pos, startBlock);
-        const configsAfter:SlotConfig[][] = new Array(NUM_SEEKERS);
-        for (let s=0; s<NUM_SEEKERS; s++) {
-            configsAfter[s] = stateAfter.slots[s].configs;
-        }
-        const yieldsAfter = await session.getSlotYieldsWithOffChainStorage(NUM_TICKS, configsAfter);
+        const configsAfter = stateAfter.slots.map(slot => slot.configs);
+        const yieldsAfter = await session.getSlotYields(NUM_TICKS, configsAfter);
         // console.log(`yield after:`, yieldsAfter);
 
 
-        expect(yieldsAfter[2].toNumber(), "Yield of non present seeker should be higher due to bonus").to.be.greaterThan(yieldsBefore[2].toNumber());
+        expect(yieldsAfter[2], "Yield of non present seeker should be higher due to bonus").to.be.greaterThan(yieldsBefore[2]);
+    });
+
+    it("Should claim up to current tick", async() => {
+        const pos = {x: 1024, y: 1024};
+        
+        // Get session
+        const {
+            session,
+            startBlock,
+            currentTick
+        } = await getSession(pos);
+
+        // Get state
+        const state = await getSessionState(pos, startBlock);
+        const configs = state.slots.map(slot => slot.configs);
+        const yields = await session.getSlotYields(currentTick, configs);
+        console.log(`currentTick:`, currentTick);
+        console.log(`yields:`, yields);
+
+        // Claim
+        const claimSlot = 0;
+        const claim = {
+            slot: claimSlot,
+            tick: currentTick,
+            yields: yields
+        } as CombatSession.ClaimStruct;
+        await mine(
+            [await session.claimReward(claim, configs)]
+        );
+
+        const newState = await getSessionState(pos, startBlock);
+
+        expect(newState.slots[claimSlot].claimed, "Expected claimed value to equal yield").to.eq(yields[claimSlot]);
+    });
+
+    it("Doctored yields should fail to claim", async() => {
+        const pos = {x: 1024, y: 1024};
+        
+        // Get session
+        const {
+            session,
+            startBlock,
+            currentTick
+        } = await getSession(pos);
+
+        // Get state
+        const state = await getSessionState(pos, startBlock);
+        const configs = state.slots.map(slot => slot.configs);
+
+        const yields = await session.getSlotYields(currentTick, configs);
+        console.log(`currentTick:`, currentTick);
+        console.log(`yields:`, yields);
+
+        // Claim
+        const claimSlot = 0;
+        const claim = {
+            slot: claimSlot,
+            tick: currentTick,
+            yields: yields
+        } as CombatSession.ClaimStruct;
+
+        // Doctored yield should fail
+        claim.yields = [100, 100, 100];
+        let error: Error|null = null;
+        try {
+            await mine(
+                [await session.claimReward(claim, configs)]
+            )
+        } catch (e: any) {
+            error = e;
+        }
+        expect(error).to.be.an('Error');
+
+    });
+
+    it("Doctored configs should fail to claim", async() => {
+        const pos = {x: 1024, y: 1024};
+        
+        // Get session
+        const {
+            session,
+            startBlock,
+            currentTick
+        } = await getSession(pos);
+
+        // Get state
+        const state = await getSessionState(pos, startBlock);
+        const configs = state.slots.map(slot => slot.configs);
+
+        // Doctor the config by removing the last event from seeker 3 therefore making it so they do not leave
+        const realYields = await session.getSlotYields(currentTick, configs);
+        configs[2].pop();
+        const fakeYields = await session.getSlotYields(currentTick, configs);
+        expect(fakeYields[2]).to.be.gt(realYields[2]);
+
+        // Claim
+        const claimSlot = 0;
+        const claim = {
+            slot: claimSlot,
+            tick: currentTick,
+            yields: fakeYields
+        } as CombatSession.ClaimStruct;
+
+        // Doctored config should fail
+        let error: Error|null = null;
+        try {
+            await mine(
+                [await session.claimReward(claim, configs)]
+            )
+        } catch (e: any) {
+            error = e;
+        }
+        expect(error).to.be.an('Error');
+    });
+
+    it("Seeker 1 can make another claim", async() => {
+        const pos = {x: 1024, y: 1024};
+        
+        // Get session
+        const {
+            session,
+            startBlock,
+            currentTick
+        } = await getSession(pos);
+
+        // Get state
+        const state = await getSessionState(pos, startBlock);
+        const configs = state.slots.map(slot => slot.configs);
+        const yields = await session.getSlotYields(currentTick, configs);
+
+        // Claim
+        const claimSlot = 0;
+        const claim = {
+            slot: claimSlot,
+            tick: currentTick,
+            yields: yields
+        } as CombatSession.ClaimStruct;
+        await mine(
+            [await session.claimReward(claim, configs)]
+        );
+
+        const newState = await getSessionState(pos, startBlock);
+
+        expect(newState.slots[claimSlot].claimed).to.be.gt(state.slots[claimSlot].claimed);
+        expect(newState.slots[claimSlot].claimed).to.be.eq(yields[claimSlot]);
+
     });
 
     // // THIS ONE
@@ -385,7 +515,7 @@ describe('E2E', async function () {
     //     console.log('cfg ===> ', cfgs);
 
     //     // fetch the calculated yields from the chain (this could be done offline)
-    //     const yields = await sessionContract.getSlotYieldsWithOffChainStorage(tick, cfgs);
+    //     const yields = await sessionContract.getSlotYields(tick, cfgs);
     //     console.log('yields <=== ', yields);
 
     //     // construct a claim for seeker in slot0
@@ -402,21 +532,29 @@ describe('E2E', async function () {
 
 });
 
-async function getCurrentTick(position: Position): Promise<number> {
+async function getSession(position: Position) {
     const sessionAddr = await combatManager.getSession(position);
+    expect(sessionAddr, "Expected session contract to be instantiated").to.not.eq("0x0000000000000000000000000000000000000000");
+    
     const session = await ethers.getContractAt("CombatSession", sessionAddr);
     const startBlock = (await session.startBlock()).toNumber();
+    const currentTick = (await provider.getBlockNumber()) - startBlock;
 
-    const currentBlock = await provider.getBlockNumber();
-    return currentBlock - startBlock;
+    return {
+        session,
+        startBlock,
+        currentTick
+    }
 }
 
-async function getSessionState(position: Position, fromBlock: number): Promise<SessionState> {
-    // fetch the session config
-    const sessionAddr = await combatManager.getSession(position);
-    const session = await ethers.getContractAt("CombatSession", sessionAddr);
+async function getSessionState(position: Position, fromBlock: number = 0): Promise<SessionState> {
+    // Get session
+    const {
+        session,
+        startBlock
+    } = await getSession(position);
 
-    const startBlock = await session.startBlock();
+    fromBlock = fromBlock > 0? fromBlock : startBlock;
 
     // fetch the occupied slots
     const slots = (await session.getSlots()).map( ({seekerID, claimed, hash}) => {
