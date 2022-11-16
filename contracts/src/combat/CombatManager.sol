@@ -17,7 +17,11 @@ contract CombatManager {
     Mod modContract;
     IPoseidonHasher hasher;
 
-    constructor(Seeker _seekerContract, Mod _modContract, IPoseidonHasher _hasherContractAddr) {
+    constructor(
+        Seeker _seekerContract,
+        Mod _modContract,
+        IPoseidonHasher _hasherContractAddr
+    ) {
         seekerContract = _seekerContract;
         modContract = _modContract;
         hasher = _hasherContractAddr;
@@ -26,6 +30,7 @@ contract CombatManager {
     // -- ACTIONS
 
     function join(Position memory pos, uint256 seekerID) public {
+        // TODO: assert that the player is at position
         // TODO: assert that the tile at position is an enemy tile
 
         uint sessionKey = getSessionKey(pos);
@@ -58,7 +63,7 @@ contract CombatManager {
 
     function equip(Position memory pos, uint seekerID, uint modID) public {
         modContract.equip(seekerID, modID);
-        
+
         uint sessionKey = getSessionKey(pos);
         CombatSession session = _combatSessions[sessionKey];
 
@@ -97,11 +102,9 @@ contract CombatManager {
                 bonusSupply: 100,
                 sessionDuration: 100, // Would this be passed in as data?
                 regenDuration: 50,
-                maxRespawn: 5,
+                maxSpawn: 11, // zero is infinite.
                 respawnSupplyDecayPerc: 10,
                 minDecayedSupply: 10
             });
     }
-
-
 }

@@ -157,6 +157,11 @@ describe('E2E', async function () {
             GameObjectAttr.attack,
             10,
         ).then(tx => tx.wait());
+        await modContract.mint(
+            signer.address, 
+            GameObjectAttr.attack,
+            100,
+        ).then(tx => tx.wait());
 
         // manual mining mode
         // await ethers.provider.send("evm_setAutomine", [false]);
@@ -165,6 +170,7 @@ describe('E2E', async function () {
 
     const tick = NUM_TICKS; // always prove this number of ticks
     const slot = 0; // always prove this slot
+    const pos = {x: 1024, y: 1024};
 
 
     let sessionCorruption = 50;
@@ -246,8 +252,6 @@ describe('E2E', async function () {
         // manual mining mode
         await ethers.provider.send("evm_setAutomine", [false]);
 
-        const pos = {x: 1024, y: 1024};
-
         const txs: any = [];
         txs.push(await combatManager.join(pos, 1));
         txs.push(await combatManager.join(pos, 2));
@@ -258,13 +262,13 @@ describe('E2E', async function () {
         const state = await getSessionState(pos);
 
         // console.log(`state:`, state.slots[0], state.slots[1], state.slots[2]);
+        console.log(`starting ticks:`, state.slots[0].configs[0].tick, state.slots[1].configs[0].tick, state.slots[2].configs[0].tick);
 
         expect(state.slots[1].configs[0].tick, "Expected last two joiners to join on the same tick").to.eq(state.slots[2].configs[0].tick)
     })
 
     it("Seeker that leaves before the others should get a lower yield", async() => {
-        const pos = {x: 1024, y: 1024};
-        
+       
         for (var i = 0; i < 10; i++) {
             await ethers.provider.send("evm_mine", []);
         }
@@ -292,8 +296,6 @@ describe('E2E', async function () {
     });
 
     it("Equipping mid battle should increase yield", async() => {
-        const pos = {x: 1024, y: 1024};
-
         // Get session
         const {
             session,
@@ -329,8 +331,6 @@ describe('E2E', async function () {
     });
 
     it("Defeating Enemy should yield bonus", async() => {
-        const pos = {x: 1024, y: 1024};
-
         // Get session
         const {
             session,
@@ -359,8 +359,6 @@ describe('E2E', async function () {
     });
 
     it("Should claim up to current tick", async() => {
-        const pos = {x: 1024, y: 1024};
-        
         // Get session
         const {
             session,
@@ -391,9 +389,7 @@ describe('E2E', async function () {
         expect(newState.slots[claimSlot].claimed, "Expected claimed value to equal yield").to.eq(yields[claimSlot]);
     });
 
-    it("Doctored yields should fail to claim", async() => {
-        const pos = {x: 1024, y: 1024};
-        
+    it("Doctored yields should fail to claim", async() => {     
         // Get session
         const {
             session,
@@ -432,8 +428,6 @@ describe('E2E', async function () {
     });
 
     it("Doctored configs should fail to claim", async() => {
-        const pos = {x: 1024, y: 1024};
-        
         // Get session
         const {
             session,
@@ -471,9 +465,7 @@ describe('E2E', async function () {
         expect(error).to.be.an('Error');
     });
 
-    it("Seeker 1 can make another claim", async() => {
-        const pos = {x: 1024, y: 1024};
-        
+    it("Seeker 1 can make another claim", async() => {       
         // Get session
         const {
             session,
@@ -504,31 +496,236 @@ describe('E2E', async function () {
 
     });
 
-    // // THIS ONE
-    // it("claimWithOnChainCalcOffChainStorage", async () => {
-    //     // build the session state from the events
-    //     const state = await getSessionState(sessionStartBlock);
-    //     console.log('session state <=== ', state);
+    it("Seeker 2 can leave, re-join and make a claim", async() => {
+        // Get session
+        const {
+            session,
+            startBlock
+        } = await getSession(pos);
 
-    //     // build the actions data (slot configs over time) from the events
-    //     const cfgs = state.slots.map(slot => slot.configs);
-    //     console.log('cfg ===> ', cfgs);
+        // Get state
+        const stateBefore = await getSessionState(pos, startBlock);
+        const configsBefore = stateBefore.slots.map(slot => slot.configs);
 
-    //     // fetch the calculated yields from the chain (this could be done offline)
-    //     const yields = await sessionContract.getSlotYields(tick, cfgs);
-    //     console.log('yields <=== ', yields);
+        // What the yield would be if seeker 2 leave and come back
+        const yieldsBefore = await session.getSlotYields(NUM_TICKS, configsBefore);
 
-    //     // construct a claim for seeker in slot0
-    //     const claim:Claim = {
-    //         tick,
-    //         slot: 0,
-    //         yields,
-    //     };
-    //     console.log('claim ===>', claim);
+        // Leave for 20 ticks
+        await mine(
+            [await combatManager.leave(pos, 2)]
+        );
+        for (var i = 0; i < 20; i++) {
+            await ethers.provider.send("evm_mine", []);
+        }
+        
+        // Rejoin
+        await mine(
+            [await combatManager.join(pos, 2)]
+        );
 
-    //     // attempt to claim
-    //     await sessionContract.claimWithOnChainCalcOffChainStorage(claim, cfgs).then(tx => tx.wait());
-    // });
+        // Mine to end of session
+        let currentTick = (await provider.getBlockNumber()) - startBlock;
+        for (var i = 0; i < NUM_TICKS - currentTick; i++) {
+            await ethers.provider.send("evm_mine", []);
+        }
+
+        currentTick = (await provider.getBlockNumber()) - startBlock;
+        expect(currentTick).to.be.eq(NUM_TICKS);
+
+        const stateAfter = await getSessionState(pos, startBlock);
+        const configsAfter = stateAfter.slots.map(slot => slot.configs);
+        const yieldsAfter = await session.getSlotYields(NUM_TICKS, configsAfter);
+
+        expect(yieldsBefore[1], "Expected yields where seeker doesn't leave and rejoin the battle to be higher").to.be.gt(yieldsAfter[1]);
+
+        // Claim
+        const claimSlot = 1;
+        const claim = {
+            slot: claimSlot,
+            tick: currentTick,
+            yields: yieldsAfter
+        } as CombatSession.ClaimStruct;
+        await mine(
+            [await session.claimReward(claim, configsAfter)]
+        );
+
+        const newState = await getSessionState(pos, startBlock);
+
+        expect(newState.slots[claimSlot].claimed).to.be.gt(stateBefore.slots[claimSlot].claimed);
+        expect(newState.slots[claimSlot].claimed).to.be.eq(yieldsAfter[claimSlot]);
+    });
+
+    it("Seeker 3 cannot rejoin the ended session", async() => {
+        // Get session
+        const {
+            session,
+            startBlock,
+            currentTick
+        } = await getSession(pos);
+        
+        expect(currentTick, "Current tick should be above the number of ticks in a session").to.be.gt(NUM_TICKS);
+
+        // Rejoin (should error)
+        let error: Error|null = null;
+        try {
+            await mine(
+                [await combatManager.join(pos, 3)]
+            )
+        } catch (e: any) {
+            error = e;
+        }
+        expect(error, "Expected seeker 3 not to be able to rejoin the ended session").to.be.an('Error');
+    });
+
+    it("Should be able to rejoin after waiting session regen period", async() => {
+        // Get session
+        const {
+            session,
+            startBlock,
+        } = await getSession(pos);
+
+        const {regenDuration} = await session.tileData();
+
+        // Mine to next session
+        for (var i = 0; i < regenDuration; i++) {
+            await ethers.provider.send("evm_mine", []);
+        }
+
+        // Join
+        await mine(
+            [await combatManager.join(pos, 3)]
+        )
+
+        let state = await getSessionState(pos);
+        expect(state.slots[0].configs.length, "Expected to have only the action for join and not include past session actions").to.eq(1);
+    });
+
+    it("Each session iteration should have diminishing returns", async() => {
+        // Equip strong mod to ensure one seeker can destroy the enemy
+        await mine(
+            [await combatManager.equip(pos, 3, 3)]
+        );
+
+        // Get session
+        const {
+            session,
+            startBlock,
+        } = await getSession(pos);
+
+        const {regenDuration, maxSpawn} = await session.tileData();
+        const sessionIteration = await session.iteration();
+
+        const prevState = await getSessionState(pos);
+        const prevConfigs = prevState.slots.map(slot => slot.configs);
+        let prevYields = await session.getSlotYields(NUM_TICKS, prevConfigs);
+
+        let numIterations = maxSpawn;
+        if (numIterations == 0) {
+            numIterations = 5;
+            console.warn(`WARN: maxSpawn set to 0 (infinity) so setting the iteration count to: ${numIterations}`);
+        }
+
+        for (let i = sessionIteration; i < numIterations; i++) {
+            // console.log(`Mining to session: ${i + 1}`);
+
+            // Mine to next session
+            for (let j = 0; j < NUM_TICKS + regenDuration; j++) {
+                await ethers.provider.send("evm_mine", []);
+            }
+
+            // Join
+            await mine(
+                [await combatManager.join(pos, 3)]
+            )
+            
+            const state = await getSessionState(pos);
+            const configs = state.slots.map(slot => slot.configs);
+            const yields = await session.getSlotYields(NUM_TICKS, configs);
+
+            expect(state.slots[0].configs.length, "Expected to have only the action for join and not include past session actions").to.eq(1);
+            
+            // console.log(`prev yield: ${prevYields[0]} new yield: ${yields[0]}`);
+            expect(yields[0]).to.be.lt(prevYields[0]);
+
+            prevYields = yields;
+        }
+    });
+
+    it("If the decay is at 100% then at least minDecayedSupply expected", async() => {
+        // Get session
+        const {
+            session,
+        } = await getSession(pos);
+        
+        const {
+            minDecayedSupply, 
+            respawnSupplyDecayPerc, 
+            maxSpawn, 
+            regenDuration,
+            bonusSupply
+        } = await session.tileData();
+
+        const exhaustedIteration = 1 + 100 / respawnSupplyDecayPerc;
+        const sessionIteration = await session.iteration();
+
+        if (maxSpawn > 0) {
+            expect(maxSpawn, "maxSpawn set too low to iterate enough to fully deplete supply").to.gte(exhaustedIteration);
+        }
+
+        // Mine up to exhausted iteration
+        for (let i = sessionIteration; i < exhaustedIteration; i++) {
+            // console.log(`Mining to session: ${i + 1}`);
+            
+            // Mine to next session
+            for (let j = 0; j < NUM_TICKS + regenDuration; j++) {
+                await ethers.provider.send("evm_mine", []);
+            }
+
+            // Join
+            await mine(
+                [await combatManager.join(pos, 3)]
+            )
+        }
+
+        const state = await getSessionState(pos);
+        const configs = state.slots.map(slot => slot.configs);
+        const yields = await session.getSlotYields(NUM_TICKS, configs);
+
+        expect(yields[0]).to.eq(minDecayedSupply + bonusSupply);
+
+    });
+
+    it("Cannot join a session after maxSpawn has been reached", async() => {
+        // Get session
+        const {
+            session,
+        } = await getSession(pos);
+
+        const {
+            maxSpawn,
+            regenDuration
+        } = await session.tileData();
+
+        if (maxSpawn == 0) {
+            console.warn("WARN: This test is not applicable if maxSpawn is set to 0 (infinity)");
+            return;
+        }
+
+        // Mine to next session (should bring to one past maxSpawn)
+        for (let j = 0; j < NUM_TICKS + regenDuration; j++) {
+            await ethers.provider.send("evm_mine", []);
+        }
+
+        let error: Error|null = null;
+        try {
+            await mine(
+                [await combatManager.join(pos, 3)]
+            )
+        } catch (e: any) {
+            error = e;
+        }
+        expect(error).to.be.an('Error');
+    });
 
 });
 

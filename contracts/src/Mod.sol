@@ -25,7 +25,7 @@ contract Mod is ERC721Enumerable, Ownable {
 
     constructor() ERC721("Mod", "Mod") Ownable() {}
 
-    function setSeekerContract(Seeker seekerContract) onlyOwner public {
+    function setSeekerContract(Seeker seekerContract) public onlyOwner {
         _seekerContract = seekerContract;
     }
 

@@ -26,14 +26,14 @@ contract CombatSession is Ownable {
         uint16 health;
         uint16 attack;
         address sessionReward; // TODO: support multiple rewards
-        uint256 sessionSupply; // TODO: should this be uint16 to match yield
+        uint16 sessionSupply;
         address bonusReward;
-        uint256 bonusSupply;  // TODO: should this be uint16 to match yield
+        uint16 bonusSupply;  
         uint8 sessionDuration;  // TODO: not currently referenced. Could this be below NUM_TICKS? Cannot be above
-        uint256 regenDuration; // TODO: Measured in blocks? ticks?
-        uint256 maxRespawn;
+        uint8 regenDuration; // TODO: Measured in blocks? ticks? (currently same thing)
+        uint8 maxSpawn;
         uint8 respawnSupplyDecayPerc;
-        uint256 minDecayedSupply;
+        uint16 minDecayedSupply;
     }
 
     struct Slot {
@@ -70,9 +70,12 @@ contract CombatSession is Ownable {
 
     CombatTileData public tileData;
     Slot[SEEKER_CAP] public slots;
-    uint public startBlock;
 
-    // ---- //
+    uint public startBlock;
+    uint public regenBlock;
+    uint8 public iteration;
+
+    // -------------------- //
 
     constructor(
         Seeker _seekerContract,
@@ -83,14 +86,32 @@ contract CombatSession is Ownable {
         seekerContract = _seekerContract;
         modContract = _modContract;
         hasher = _hasherContract;
-
         tileData = _tileData;
+    }
+
+    function init() private {
         startBlock = block.number;
+        regenBlock = block.number + NUM_TICKS + tileData.regenDuration;
+        iteration++;
+
+        for (uint s = 0; s < SEEKER_CAP; s++) {
+            slots[s] = Slot(0, 0, 0);
+        }
+
+        // TODO: Maybe compute the dimished returns here? Currently computed during yield calculation which doesn't require contract storage
     }
 
     // -- ACTIONS
 
     function join(uint seekerID) public onlyOwner {
+        if (regenBlock <= block.number && (tileData.maxSpawn == 0 || iteration < tileData.maxSpawn)) {
+            init();
+        }
+
+        // This doesn't revert if the enemy is defeated however the frontend could check for that.
+        // Joining a session with a defeated enemy wouldn't yield anything anyway
+        require(block.number < startBlock + NUM_TICKS, "CombatSession::join: Session ended, cannot join until regen");
+
         (uint8 slotID, bool ok) = getSeekerSlotID(seekerID);
         if (!ok) {
             (slotID, ok) = getFreeSlotID();
@@ -164,10 +185,13 @@ contract CombatSession is Ownable {
         uint a;
 
         CombatTileData memory _tileData = tileData; // Aliased to minimise storage reads
-        uint rewardSupply = _tileData.sessionSupply; // TODO: Decay
+        
+        // Supply decay doesn't compound as it might be too expensive therefore using: (supply * (100-decay*itr)) / 100
+        // To compound the decay: (supply * (100-decay) ** itr) / (100 ** itr)
+        uint rewardSupply = max((_tileData.sessionSupply * (100 - min(_tileData.respawnSupplyDecayPerc * (iteration - 1), 100)) ) / 100, tileData.minDecayedSupply);
         uint enemyHealth = _tileData.health;
-        uint[SEEKER_CAP] memory enemyDamage;
 
+        uint[SEEKER_CAP] memory enemyDamage;
         uint[SEEKER_CAP] memory actionIndex;
         uint[SEEKER_CAP] memory seekerDamage;
 
