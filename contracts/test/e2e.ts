@@ -30,25 +30,9 @@ function env(key:string):string {
 }
 const NUM_SEEKERS = parseInt(env('NUM_SEEKERS'));
 const NUM_TICKS = parseInt(env('NUM_TICKS'));
-// const NUM_ACTIONS = parseInt(env('NUM_ACTIONS'));
+// const NUM_ACTIONS = parseInt(env('NUM_ACTIONS')); // Applicable when we come to proving
+
 const seekerGeneration = 1;
-
-interface Prover {
-    wasm: string;
-    key: string;
-    withHashes: boolean;
-}
-
-// const PROVE_ON_CHAIN_INPUTS:Prover = {
-//     wasm: env('NOHASH_WASM_PATH'),
-//     key: env('NOHASH_KEY_PATH'),
-//     withHashes: false,
-// };
-// const PROVE_OFF_CHAIN_INPUTS:Prover = {
-//     wasm: env('WITHHASH_WASM_PATH'),
-//     key: env('WITHHASH_KEY_PATH'),
-//     withHashes: true,
-// };
 
 enum GameObjectAttr {
     resonance,     // 0
@@ -97,11 +81,7 @@ interface SessionState {
     slots: Slot[],
 }
 
-// interface Claim {
-//     slot: number;
-//     tick: number;
-//     yields: any;
-// }
+// -- Proof stuff
 // interface CombatState {
 //     sessionArmour: number;
 //     sessionHealth: number;
@@ -113,7 +93,6 @@ interface SessionState {
 //     pi_b: number[][];
 //     pi_c: number[];
 // };
-
 
 describe('E2E', async function () {
 
@@ -237,8 +216,8 @@ describe('E2E', async function () {
         const baseStats = await seekerContract.getAttrs(1);
         const moddedStats = await modContract.getModdedSeekerAttrs(1);
 
-        // console.log("baseStats:", baseStats);
-        // console.log("moddedStats:", moddedStats);
+        console.log("baseStats:", baseStats);
+        console.log("moddedStats:", moddedStats);
 
         const attackIndex = 2;
         expect(moddedStats[attackIndex]).to.be.gt(baseStats[attackIndex]);
@@ -274,6 +253,7 @@ describe('E2E', async function () {
         }
 
         // Leave
+        console.log(`Seeker 3 leaving the battle`);
         await mine(
             [await combatManager.leave(pos, 3)]
         );
@@ -291,7 +271,7 @@ describe('E2E', async function () {
         const configs = state.slots.map(slot => slot.configs);
 
         const yields = await session.getSlotYields(NUM_TICKS, configs);
-        // console.log(`yield:`, yields);
+        console.log(`yield for ${NUM_TICKS} ticks:`, yields);
         
     });
 
@@ -307,7 +287,7 @@ describe('E2E', async function () {
         const stateBefore = await getSessionState(pos, startBlock);
         const configsBefore = stateBefore.slots.map(slot => slot.configs);
         const yieldsBefore = await session.getSlotYields(NUM_TICKS, configsBefore);
-        // console.log(`yield before:`, yieldsBefore);
+        console.log(`yield before:`, yieldsBefore);
 
         // Mine to half way through battle
         const halfTime = Math.floor(NUM_TICKS / 2);
@@ -325,7 +305,7 @@ describe('E2E', async function () {
         const stateAfter = await getSessionState(pos, startBlock);
         const configsAfter = stateAfter.slots.map(slot => slot.configs);
         const yieldsAfter = await session.getSlotYields(NUM_TICKS, configsAfter);
-        // console.log(`yield after:`, yieldsAfter);
+        console.log(`yield after:`, yieldsAfter);
 
         expect(yieldsAfter[1], 'Expected second seeker to have a higher yield than unmodded seeker').to.be.greaterThan(yieldsAfter[0]);
     });
@@ -402,8 +382,8 @@ describe('E2E', async function () {
         const configs = state.slots.map(slot => slot.configs);
 
         const yields = await session.getSlotYields(currentTick, configs);
-        console.log(`currentTick:`, currentTick);
-        console.log(`yields:`, yields);
+        // console.log(`currentTick:`, currentTick);
+        // console.log(`yields:`, yields);
 
         // Claim
         const claimSlot = 0;
@@ -644,7 +624,7 @@ describe('E2E', async function () {
 
             expect(state.slots[0].configs.length, "Expected to have only the action for join and not include past session actions").to.eq(1);
             
-            // console.log(`prev yield: ${prevYields[0]} new yield: ${yields[0]}`);
+            console.log(`session iteration: ${i+1} prev yield: ${prevYields[0]} new yield: ${yields[0]}`);
             expect(yields[0]).to.be.lt(prevYields[0]);
 
             prevYields = yields;
@@ -810,52 +790,3 @@ function explodeState(sessionState: SessionState, numTicks: number): SessionStat
         slots: slots
     };
 }
-
-// async function generateInputs(cfgs:SlotConfig[][], currentTick:number, withHashes:boolean) {
-
-//     // convert actions into expanded list of all inputs at each tick per seeker
-//     const inputs = {
-//         seekerHRV: Array(NUM_TICKS).fill(null).map(() => Array(NUM_SEEKERS).fill(0)),
-//         seekerYLB: Array(NUM_TICKS).fill(null).map(() => Array(NUM_SEEKERS).fill(0)),
-//         seekerEND: Array(NUM_TICKS).fill(null).map(() => Array(NUM_SEEKERS).fill(0)),
-//         seekerACT: Array(NUM_TICKS).fill(null).map(() => Array(NUM_SEEKERS).fill(0)),
-//         currentTick,
-//     } as any;
-//     if (withHashes) {
-//         inputs.seekerValuesHash = Array(NUM_SEEKERS).fill(null);
-//         inputs.seekerValuesUpdated = Array(NUM_TICKS).fill(null).map(() => Array(NUM_SEEKERS).fill(0));
-//     }
-//     for (let s=0; s<NUM_SEEKERS; s++) {
-//         let inputValuesHash = 0;
-//         const poseidon = await circomlib.buildPoseidon();
-
-//         for (let a=0; a<cfgs[s].length; a++) {
-//             const cfg = cfgs[s][a];
-//             // console.log('seeker', s, action);
-//             if (cfg.action == ActionKind.ENTER || cfg.action == ActionKind.EQUIP) {
-//                 // console.log('hash bfr', poseidon.F.toString(inputValuesHash));
-//                 const h = [
-//                     inputValuesHash,
-//                     packSlotConfig(cfg)
-//                 ];
-//                 inputValuesHash = poseidon(h);
-//                 if (withHashes) {
-//                     inputs.seekerValuesUpdated[cfg.tick][s] = 1;
-//                 }
-//                 // console.log('hash afr', poseidon.F.toString(inputValuesHash), h);
-//             }
-//             for (let t=cfg.tick; t<NUM_TICKS; t++) {
-//                 inputs.seekerHRV[t][s] = cfg.hrv;
-//                 inputs.seekerYLB[t][s] = cfg.yldb;
-//                 inputs.seekerEND[t][s] = cfg.end;
-//                 inputs.seekerACT[t][s] = cfg.action;
-//             }
-//         }
-
-//         if (withHashes) {
-//             inputs.seekerValuesHash[s] = inputValuesHash === 0 ? 0 : poseidon.F.toString(inputValuesHash);
-//         }
-//     }
-
-//     return inputs;
-// }

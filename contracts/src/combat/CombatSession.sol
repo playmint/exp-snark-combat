@@ -264,6 +264,11 @@ contract CombatSession is Ownable {
             }
         }
 
+        // If we want to base the bonus around damage inflicted, uncomment this 
+        // if (enemyHealth == 0) {
+        //     rewardSupply += _tileData.bonusSupply; // TODO: Decayed bonus?
+        // }
+
         // Calc yield and count participants
         uint numParticipants;
         for (s = 0; s < SEEKER_CAP; s++) {
